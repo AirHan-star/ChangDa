@@ -1,4 +1,4 @@
-[gd_scene load_steps=32 format=3]
+[gd_scene load_steps=36 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="PlayerScript"]
 
@@ -129,6 +129,26 @@ size = Vector3(0.217, 0.222, 0.33)
 [sub_resource type="BoxMesh" id="Mesh19"]
 material = SubResource("Strap")
 size = Vector3(0.225, 0.055, 0.342)
+
+[sub_resource type="StandardMaterial3D" id="BladeMaterial"]
+albedo_color = Color(0.60, 0.70, 0.71, 1)
+roughness = 0.78
+
+[sub_resource type="BoxMesh" id="SwordGrip"]
+material = SubResource("Strap")
+size = Vector3(0.072, 0.23, 0.067)
+
+[sub_resource type="BoxMesh" id="SwordGuard"]
+material = SubResource("BladeMaterial")
+size = Vector3(0.24, 0.07, 0.085)
+
+[sub_resource type="CylinderMesh" id="SwordBlade"]
+material = SubResource("BladeMaterial")
+top_radius = 0.015
+bottom_radius = 0.11
+height = 0.59
+radial_segments = 4
+rings = 0
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -282,3 +302,21 @@ mesh = SubResource("Mesh18")
 [node name="Sole" type="MeshInstance3D" parent="Model/RightLeg"]
 position = Vector3(0, -0.817, 0.045)
 mesh = SubResource("Mesh19")
+
+[node name="Sword" type="Node3D" parent="Model"]
+visible = false
+position = Vector3(0.40, 0.92, 0.07)
+
+[node name="Grip" type="MeshInstance3D" parent="Model/Sword"]
+rotation_degrees = Vector3(0, 0, 180)
+mesh = SubResource("SwordGrip")
+
+[node name="Guard" type="MeshInstance3D" parent="Model/Sword"]
+position = Vector3(0, -0.13, 0)
+mesh = SubResource("SwordGuard")
+
+[node name="Blade" type="MeshInstance3D" parent="Model/Sword"]
+position = Vector3(0, -0.43, 0.015)
+rotation_degrees = Vector3(0, 0, 180)
+scale = Vector3(1, 1, 0.42)
+mesh = SubResource("SwordBlade")

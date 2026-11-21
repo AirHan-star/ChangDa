@@ -1,5 +1,9 @@
 [gd_scene load_steps=107 format=3]
 
+[ext_resource type="PackedScene" path="res://scenes/wood_pickup.tscn" id="Wood"]
+[ext_resource type="PackedScene" path="res://scenes/ore.tscn" id="Ore"]
+[ext_resource type="PackedScene" path="res://scenes/station_gate.tscn" id="Gate"]
+[ext_resource type="Script" path="res://scripts/relay_lighting.gd" id="Lighting"]
 [ext_resource type="Script" path="res://scripts/pickup.gd" id="Pickup"]
 [ext_resource type="FontFile" path="res://assets/relay_ui.otf" id="Font"]
 [ext_resource type="Shader" path="res://assets/terrain.gdshader" id="GroundShader"]
@@ -15,9 +19,10 @@ sun_angle_max = 15.0
 sky_material = SubResource("SkyPaint")
 
 [sub_resource type="Environment" id="Environment"]
+resource_local_to_scene = true
 background_mode = 2
 sky = SubResource("Sky")
-ambient_light_source = 3
+ambient_light_source = 2
 ambient_light_color = Color(0.74, 0.84, 0.82, 1)
 ambient_light_energy = 0.65
 fog_enabled = true
@@ -59,9 +64,6 @@ roughness = 0.91
 albedo_color = Color(0.27, 0.18, 0.13, 1)
 roughness = 0.91
 
-[sub_resource type="StandardMaterial3D" id="Cut"]
-albedo_color = Color(0.87, 0.58, 0.30, 1)
-roughness = 0.91
 
 [sub_resource type="StandardMaterial3D" id="PineDark"]
 albedo_color = Color(0.13, 0.27, 0.21, 1)
@@ -298,25 +300,6 @@ size = Vector3(0.17, 0.81, 0.065)
 material = SubResource("Amber")
 size = Vector3(0.23, 0.26, 0.085)
 
-[sub_resource type="CylinderMesh" id="Mesh43"]
-material = SubResource("Bark")
-top_radius = 0.145
-bottom_radius = 0.18
-height = 0.84
-radial_segments = 8
-rings = 0
-
-[sub_resource type="CylinderMesh" id="Mesh44"]
-material = SubResource("Cut")
-top_radius = 0.137
-bottom_radius = 0.137
-height = 0.024
-radial_segments = 8
-rings = 0
-
-[sub_resource type="BoxMesh" id="Mesh45"]
-material = SubResource("Amber")
-size = Vector3(0.2, 0.2, 0.2)
 
 [sub_resource type="CylinderMesh" id="Mesh46"]
 material = SubResource("Can")
@@ -554,6 +537,9 @@ light_energy = 1.22
 shadow_enabled = true
 directional_shadow_max_distance = 75.0
 
+[node name="Lighting" type="Node3D" parent="."]
+script = ExtResource("Lighting")
+
 [node name="Ground" type="MeshInstance3D" parent="."]
 position = Vector3(0, -0.25, 9)
 mesh = SubResource("Mesh1")
@@ -692,6 +678,9 @@ mesh = SubResource("Mesh19")
 [node name="RightJamb" type="MeshInstance3D" parent="Station"]
 position = Vector3(1.36, 1.28, 5.16)
 mesh = SubResource("Mesh19")
+
+[node name="Gate" parent="Station" instance=ExtResource("Gate")]
+position = Vector3(0, 0.05, 5)
 
 [node name="Roof" type="MeshInstance3D" parent="Station"]
 position = Vector3(0, 3.47, 0)
@@ -864,143 +853,13 @@ position = Vector3(2.65, 1.12, -13.75)
 [node name="Supplies" type="Node3D" parent="."]
 
 
-[node name="Wood01" type="Node3D" parent="Supplies"]
+[node name="Wood01" parent="Supplies" instance=ExtResource("Wood")]
 position = Vector3(-0.8, 0, 1.2)
-script = ExtResource("Pickup")
 supply_id = &"wood01"
-kind = 0
 
-[node name="Log0" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(-0.27, 0.19, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut0B" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(-0.27, 0.19, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut0A" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(-0.27, 0.19, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Log1" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(0, 0.38, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut1B" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(0, 0.38, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut1A" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(0, 0.38, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Log2" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(0.27, 0.19, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut2B" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(0.27, 0.19, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut2A" type="MeshInstance3D" parent="Supplies/Wood01"]
-position = Vector3(0.27, 0.19, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Marker" type="Node3D" parent="Supplies/Wood01"]
-position = Vector3(0, 1.15, 0)
-
-[node name="Diamond" type="MeshInstance3D" parent="Supplies/Wood01/Marker"]
-position = Vector3(0, 0, 0)
-rotation = Vector3(0.58, 0, 0.7854)
-mesh = SubResource("Mesh45")
-
-[node name="SupplyName" type="Label3D" parent="Supplies/Wood01"]
-position = Vector3(0, 1.6, 0)
-pixel_size = 0.009
-font = ExtResource("Font")
-font_size = 42
-outline_size = 7
-text = "木料"
-billboard = 1
-modulate = Color(1, 0.79, 0.45, 1)
-
-[node name="Wood02" type="Node3D" parent="Supplies"]
+[node name="Wood02" parent="Supplies" instance=ExtResource("Wood")]
 position = Vector3(3.55, 0, 10.6)
-script = ExtResource("Pickup")
 supply_id = &"wood02"
-kind = 0
-
-[node name="Log0" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(-0.27, 0.19, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut0B" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(-0.27, 0.19, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut0A" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(-0.27, 0.19, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Log1" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(0, 0.38, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut1B" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(0, 0.38, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut1A" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(0, 0.38, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Log2" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(0.27, 0.19, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut2B" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(0.27, 0.19, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut2A" type="MeshInstance3D" parent="Supplies/Wood02"]
-position = Vector3(0.27, 0.19, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Marker" type="Node3D" parent="Supplies/Wood02"]
-position = Vector3(0, 1.15, 0)
-
-[node name="Diamond" type="MeshInstance3D" parent="Supplies/Wood02/Marker"]
-position = Vector3(0, 0, 0)
-rotation = Vector3(0.58, 0, 0.7854)
-mesh = SubResource("Mesh45")
-
-[node name="SupplyName" type="Label3D" parent="Supplies/Wood02"]
-position = Vector3(0, 1.6, 0)
-pixel_size = 0.009
-font = ExtResource("Font")
-font_size = 42
-outline_size = 7
-text = "木料"
-billboard = 1
-modulate = Color(1, 0.79, 0.45, 1)
 
 [node name="Can01" type="Node3D" parent="Supplies"]
 position = Vector3(1.2, 0, 17.1)
@@ -1046,74 +905,9 @@ text = "罐头"
 billboard = 1
 modulate = Color(0.54, 1, 0.88, 1)
 
-[node name="Wood03" type="Node3D" parent="Supplies"]
+[node name="Wood03" parent="Supplies" instance=ExtResource("Wood")]
 position = Vector3(-3.45, 0, 23.8)
-script = ExtResource("Pickup")
 supply_id = &"wood03"
-kind = 0
-
-[node name="Log0" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(-0.27, 0.19, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut0B" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(-0.27, 0.19, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut0A" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(-0.27, 0.19, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Log1" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(0, 0.38, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut1B" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(0, 0.38, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut1A" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(0, 0.38, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Log2" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(0.27, 0.19, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut2B" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(0.27, 0.19, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut2A" type="MeshInstance3D" parent="Supplies/Wood03"]
-position = Vector3(0.27, 0.19, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Marker" type="Node3D" parent="Supplies/Wood03"]
-position = Vector3(0, 1.15, 0)
-
-[node name="Diamond" type="MeshInstance3D" parent="Supplies/Wood03/Marker"]
-position = Vector3(0, 0, 0)
-rotation = Vector3(0.58, 0, 0.7854)
-mesh = SubResource("Mesh45")
-
-[node name="SupplyName" type="Label3D" parent="Supplies/Wood03"]
-position = Vector3(0, 1.6, 0)
-pixel_size = 0.009
-font = ExtResource("Font")
-font_size = 42
-outline_size = 7
-text = "木料"
-billboard = 1
-modulate = Color(1, 0.79, 0.45, 1)
 
 [node name="Can02" type="Node3D" parent="Supplies"]
 position = Vector3(-3.1, 0, 28.3)
@@ -1158,6 +952,39 @@ outline_size = 7
 text = "罐头"
 billboard = 1
 modulate = Color(0.54, 1, 0.88, 1)
+
+[node name="Wood04" parent="Supplies" instance=ExtResource("Wood")]
+position = Vector3(1.7, 0, -2.9)
+supply_id = &"wood04"
+
+[node name="Wood05" parent="Supplies" instance=ExtResource("Wood")]
+position = Vector3(2.45, 0, 4.7)
+supply_id = &"wood05"
+
+[node name="Wood06" parent="Supplies" instance=ExtResource("Wood")]
+position = Vector3(-1.9, 0, 8.0)
+supply_id = &"wood06"
+
+[node name="Wood07" parent="Supplies" instance=ExtResource("Wood")]
+position = Vector3(2.45, 0, 19.4)
+supply_id = &"wood07"
+
+[node name="Wood08" parent="Supplies" instance=ExtResource("Wood")]
+position = Vector3(-2.2, 0, 26.1)
+supply_id = &"wood08"
+
+[node name="Ores" type="Node3D" parent="."]
+
+[node name="Ore01" parent="Ores" instance=ExtResource("Ore")]
+position = Vector3(-2.7, 0, 4.3)
+
+[node name="Ore02" parent="Ores" instance=ExtResource("Ore")]
+position = Vector3(0.0, 0, 13.2)
+
+[node name="Ore03" parent="Ores" instance=ExtResource("Ore")]
+position = Vector3(-3.4, 0, 21.5)
+
+[node name="Infected" type="Node3D" parent="."]
 
 [node name="Woods" type="Node3D" parent="."]
 

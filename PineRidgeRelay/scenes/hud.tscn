@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/hud.gd" id="1"]
 [ext_resource type="FontFile" path="res://assets/relay_ui.otf" id="2"]
@@ -18,6 +18,20 @@ border_width_left = 2
 border_color = Color(0.72, 0.47, 0.26, 1)
 corner_radius_top_right = 5
 corner_radius_bottom_right = 5
+
+[sub_resource type="StyleBoxFlat" id="HealthBackground"]
+bg_color = Color(0.17, 0.22, 0.20, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+
+[sub_resource type="StyleBoxFlat" id="HealthFill"]
+bg_color = Color(0.69, 0.78, 0.46, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1")
@@ -66,7 +80,7 @@ layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -293.0
+offset_left = -326.0
 offset_top = 24.0
 offset_right = -26.0
 grow_horizontal = 0
@@ -85,8 +99,8 @@ text = "随身物资"
 
 [node name="Carried" type="Label" parent="Screen/Inventory/Content"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 23
-text = "木料 0     罐头 0"
+theme_override_font_sizes/font_size = 20
+text = "木料 0    石头 0    罐头 0"
 
 [node name="Stored" type="Label" parent="Screen/Inventory/Content"]
 layout_mode = 2
@@ -121,8 +135,8 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 26.0
-offset_top = -70.0
-offset_right = 400.0
+offset_top = -88.0
+offset_right = 442.0
 offset_bottom = -22.0
 grow_vertical = 0
 mouse_filter = 2
@@ -131,4 +145,134 @@ theme_override_styles/panel = SubResource("Panel")
 [node name="Keys" type="Label" parent="Screen/Controls"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-text = "WASD 移动   鼠标 转镜头   Shift 奔跑   Esc 释放鼠标"
+text = "WASD 移动   鼠标 转镜头   Shift 奔跑   空格 跳跃\nE 拾取 / 开采 / 存入   Esc 释放鼠标"
+
+
+[node name="Survival" type="PanelContainer" parent="Screen"]
+layout_mode = 1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -163.0
+offset_right = 163.0
+offset_top = 24.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Panel")
+
+[node name="Content" type="VBoxContainer" parent="Screen/Survival"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 5
+
+[node name="Phase" type="Label" parent="Screen/Survival/Content"]
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 1
+
+[node name="Gate" type="Label" parent="Screen/Survival/Content"]
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+
+[node name="Health" type="ProgressBar" parent="Screen/Survival/Content"]
+custom_minimum_size = Vector2(0, 5)
+mouse_filter = 2
+theme_override_styles/background = SubResource("HealthBackground")
+theme_override_styles/fill = SubResource("HealthFill")
+show_percentage = false
+
+[node name="Raid" type="Label" parent="Screen/Survival/Content"]
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+
+[node name="Crafting" type="PanelContainer" parent="Screen"]
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -326.0
+offset_right = -26.0
+offset_top = -164.0
+offset_bottom = -22.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Panel")
+
+[node name="Content" type="VBoxContainer" parent="Screen/Crafting"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="Title" type="Label" parent="Screen/Crafting/Content"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.95, 0.75, 0.46, 1)
+text = "制作"
+
+[node name="WoodPick" type="Label" parent="Screen/Crafting/Content"]
+
+[node name="StonePick" type="Label" parent="Screen/Crafting/Content"]
+
+[node name="StoneSword" type="Label" parent="Screen/Crafting/Content"]
+
+[node name="Attack" type="Label" parent="Screen/Crafting/Content"]
+theme_override_font_sizes/font_size = 14
+text = "持石剑时左键攻击"
+
+[node name="Toast" type="Label" parent="Screen"]
+visible = false
+layout_mode = 1
+anchor_top = 1.0
+anchor_bottom = 1.0
+anchor_left = 0.25
+anchor_right = 0.75
+offset_top = -201.0
+offset_bottom = -157.0
+theme_override_colors/font_color = Color(1, 0.85, 0.54, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.08, 0.08, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 21
+horizontal_alignment = 1
+
+[node name="Result" type="ColorRect" parent="Screen"]
+visible = false
+layout_mode = 1
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.035, 0.058, 0.068, 0.83)
+
+[node name="Card" type="PanelContainer" parent="Screen/Result"]
+layout_mode = 1
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_right = 250.0
+offset_top = -130.0
+offset_bottom = 130.0
+theme_override_styles/panel = SubResource("Panel")
+
+[node name="Content" type="VBoxContainer" parent="Screen/Result/Card"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="Station" type="Label" parent="Screen/Result/Card/Content"]
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.75, 0.84, 0.76, 1)
+text = "松岭气象站"
+horizontal_alignment = 1
+
+[node name="Title" type="Label" parent="Screen/Result/Card/Content"]
+theme_override_font_sizes/font_size = 36
+horizontal_alignment = 1
+
+[node name="Detail" type="Label" parent="Screen/Result/Card/Content"]
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+
+[node name="Restart" type="Button" parent="Screen/Result/Card/Content"]
+custom_minimum_size = Vector2(176, 44)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 19
+text = "重新开始  [R]"
