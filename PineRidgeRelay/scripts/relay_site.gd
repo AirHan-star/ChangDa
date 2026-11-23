@@ -7,6 +7,7 @@ var key: String
 var title: String
 var contents: Dictionary
 var sign: Label3D
+var lid: Node3D
 
 
 func mark(label_text: String, offset: Vector3, tint := Color("#eab572")) -> void:
@@ -16,3 +17,5 @@ func mark(label_text: String, offset: Vector3, tint := Color("#eab572")) -> void
 func mark_looted() -> void:
 	if is_instance_valid(sign):
 		sign.text = title + " · 已搜空"
+	if is_instance_valid(lid):
+		lid.rotation.x = -1.15

@@ -59,6 +59,23 @@ func _ready() -> void:
 	_health_changed()
 	_refresh_bag()
 	_refresh_display()
+	if saved.has("position"):
+		_validate_saved_position.call_deferred()
+
+
+func _validate_saved_position() -> void:
+	await get_tree().physics_frame
+	if survival.player_health <= 0:
+		return
+	var probe := CapsuleShape3D.new()
+	probe.radius = 0.27
+	probe.height = 1.49
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = probe
+	query.transform.origin = player.global_position + Vector3.UP * 0.89
+	query.collision_mask = 9
+	if not get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty():
+		player.relocate(region.shelter)
 
 
 func _restore(saved: Dictionary) -> void:
@@ -113,7 +130,6 @@ func _load_region(map_id: int, point := Vector3.INF, arriving := false) -> void:
 	region.build(map_id, opened, rules)
 	field = ResourceField.new(region, depleted)
 	raid = NightRaid.new(region, player, cleared_nests)
-	raid.growled.connect(func(at: Vector3): audio.play_at(RelayAudio.Cue.GROWL, at))
 	raid.enemy_struck.connect(func(at: Vector3): audio.play_at(RelayAudio.Cue.BLADE, at))
 	var destination := region.arrival if arriving else region.shelter
 	if point.is_finite() and absf(point.x) < 38 and absf(point.z) < 60 and point.y > -3 and point.y < 40:

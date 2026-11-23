@@ -16,7 +16,6 @@ var sight_lost_for := 0.0
 var last_seen_player := Vector3.ZERO
 var health := 3
 var _player_attack_in := PLAYER_WINDUP
-var _growl_in := 0.0
 var _fall_time := 0.0
 var _fall_side := 1.0
 var _struck := false
@@ -27,18 +26,8 @@ var _detour_side := 1.0
 
 func _ready() -> void:
 	_wander_target = home
-	_growl_in = randf_range(0.40, 1.70)
 	_fall_side = -1.0 if randi() % 2 == 0 else 1.0
 	set_physics_process(false)
-
-
-func tick_voice(delta: float, listener: Vector3) -> bool:
-	_growl_in = maxf(0.0, _growl_in - delta)
-	if _growl_in > 0.0 or global_position.distance_squared_to(listener) > 21.0 ** 2:
-		return false
-	_growl_in = randf_range(4.1, 6.9)
-	model.growl(0.78)
-	return true
 
 
 func return_home() -> void:

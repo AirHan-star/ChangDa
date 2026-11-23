@@ -2,10 +2,9 @@ class_name RelayAudio
 extends Node3D
 ## Routes world sounds to position-aware voices and local damage to a separate channel.
 
-enum Cue { GROWL, ROCK, BLADE, SWING, REPORT, FOOTSTEP }
+enum Cue { ROCK, BLADE, SWING, REPORT, FOOTSTEP }
 
 const CLIPS := [
-	[preload("res://assets/audio/growl_1.wav"), preload("res://assets/audio/growl_2.wav"), preload("res://assets/audio/growl_3.wav")],
 	[preload("res://assets/audio/rock_1.wav"), preload("res://assets/audio/rock_2.wav"), preload("res://assets/audio/rock_3.wav")],
 	[preload("res://assets/audio/blade_hit_1.wav"), preload("res://assets/audio/blade_hit_2.wav")],
 	[preload("res://assets/audio/swing_1.wav"), preload("res://assets/audio/swing_2.wav")],
@@ -13,7 +12,7 @@ const CLIPS := [
 	[preload("res://assets/audio/step_1.wav"), preload("res://assets/audio/step_2.wav"), preload("res://assets/audio/step_3.wav")],
 ]
 const HURT := [preload("res://assets/audio/hurt_1.wav"), preload("res://assets/audio/hurt_2.wav")]
-const LEVELS := [1.0, -4.0, -3.0, -8.0, -2.0, -10.0]
+const LEVELS := [-4.0, -3.0, -8.0, -2.0, -10.0]
 const VOICE_COUNT := 10
 
 var _voices: Array[AudioStreamPlayer3D] = []
@@ -47,7 +46,7 @@ func _play_voice(voice: AudioStreamPlayer3D, cue: Cue, point: Vector3, gain: flo
 	voice.stream = CLIPS[cue].pick_random()
 	voice.volume_db = LEVELS[cue] + gain
 	voice.pitch_scale = randf_range(0.91, 1.08)
-	var carries := cue == Cue.GROWL or cue == Cue.REPORT
+	var carries := cue == Cue.REPORT
 	voice.unit_size = 4.0 if carries else 2.4
 	voice.max_distance = 24.0 if carries else 17.0
 	voice.play()

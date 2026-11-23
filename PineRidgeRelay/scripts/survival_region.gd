@@ -2,8 +2,14 @@ class_name SurvivalRegion
 extends Node3D
 
 const CLEARING := preload("res://scenes/clearing.tscn")
+const STATION_FITTINGS := preload("res://assets/world/station_fittings.glb")
 const CRATE := preload("res://assets/world/supply_crate.glb")
-const FENCE := Color("#5e625d")
+const DISTRICT_GROUND := preload("res://assets/regions/ground.gdshader")
+const FENCE := Color("#74796d")
+const TERRACES := {
+	1: [Vector4(-1,2,5.0,4.5), Vector4(7.8,-13,4.4,4.0), Vector4(-8.4,15.2,4.3,4.0)],
+	3: [Vector4(1,22,5.2,5.1), Vector4(8.6,-20,4.4,4.1), Vector4(-8.1,7.4,4.3,4.0)],
+}
 const CONCRETE := Color("#77796f")
 const RUST := Color("#774d3d")
 const STEEL := Color("#353e3e")
@@ -15,7 +21,7 @@ const DEPOSITS := [
 		[-9,-1,2],[12,27,2],[-13,37,2],[6,12,1],[-8,30,1]],
 	[[-14,-21,0],[13,-15,0],[17,10,0],[-13,22,0],[11,30,0],
 		[-13,-7,2],[15,-3,2],[6,24,2],[-18,13,3],[18,16,3],[-17,29,3],[19,-8,3],[14,32,3]],
-	[[-9,-23,0],[18,-13,0],[-17,4,0],[15,17,0],[-20,28,0],
+	[[-20,-27,0],[18,-13,0],[-17,4,0],[15,17,0],[-20,28,0],
 		[-21,-18,2],[19,20,2],[0,29,2]],
 	[[-10,-16,0],[12,-12,0],[-14,15,0],[10,31,0],
 		[-15,-24,2],[21,3,2],[-19,30,2],[-18,-6,4],[15,-4,4],[-17,13,4],[18,16,4],[20,28,4]],
@@ -39,6 +45,8 @@ var bench: RelaySite
 var furnace: RelaySite
 var arrival: Vector3
 var shelter: Vector3
+var buildings: Array[RegionalBuilding] = []
+var _finishes := RegionFinishes.new()
 var _materials: Dictionary = {}
 
 
@@ -64,6 +72,7 @@ func build(map_id: int, opened: Dictionary, rules: SupplyRules) -> void:
 			1: _quarry()
 			2: _city()
 			3: _basin()
+		RegionLandscape.new(ground, surface, _finishes).decorate(id)
 		_portal(Vector2(0, -29))
 		shelter = arrival
 	for entry in sites:
@@ -116,20 +125,15 @@ func surface(flat: Vector2) -> Vector3:
 
 func _height(x: float, z: float) -> float:
 	var shoulder := smoothstep(5, 26, absf(x))
+	var elevation := 0.0
 	if id == 1:
-		return shoulder * (2.1 + 1.4 * sin(z * 0.14 + x * 0.12) + 1.1 * cos(x * 0.18))
-	if id == 3:
-		return shoulder * (-0.36 + 1.45 * sin(z * 0.17 - x * 0.13)) + smoothstep(23, 41, absf(z)) * 0.45
-	return 0.0
-
-
-func _soil(x: float, z: float, index: int) -> Color:
-	var trail := absf(x) < 4.2
-	if id == 2:
-		return Color("#383d40") if trail else Color("#62645f").lightened(0.04 * (index % 4))
-	if id == 1:
-		return (Color("#938063") if trail else Color("#676a52")).lightened(0.018 * (index % 6))
-	return (Color("#9e8664") if trail else Color("#81765f")).lightened(0.021 * (index % 5))
+		elevation = shoulder * (2.1 + 1.4*sin(z*0.14+x*0.12) + 1.1*cos(x*0.18))
+	elif id == 3:
+		elevation = shoulder * (-0.36+1.45*sin(z*0.17-x*0.13)) + smoothstep(23,41,absf(z))*0.45
+	for pad in TERRACES.get(id, []):
+		var margin := maxf(absf(x-pad.x)-pad.z,absf(z-pad.y)-pad.w)
+		elevation *= smoothstep(0.35,2.75,margin)
+	return elevation
 
 
 func _terrain() -> void:
@@ -143,15 +147,14 @@ func _terrain() -> void:
 			var b := Vector3(x + 2.4, _height(x + 2.4, z), z)
 			var c := Vector3(x, _height(x, z + 2.4), z + 2.4)
 			var d := Vector3(x + 2.4, _height(x + 2.4, z + 2.4), z + 2.4)
-			var tint := _soil(x + 1.2, z, absi(ix*7 + iz*13))
 			for vertex in [a, b, c, b, d, c]:
-				surface_tool.set_color(tint)
 				surface_tool.set_smooth_group(-1)
 				surface_tool.add_vertex(vertex)
 	surface_tool.generate_normals()
 	var land := surface_tool.commit()
-	var paint := RelayGeometry.finish(Color.WHITE)
-	paint.vertex_color_use_as_albedo = true
+	var paint := ShaderMaterial.new()
+	paint.shader = DISTRICT_GROUND
+	paint.set_shader_parameter(&"district",id)
 	var terrain := RelayGeometry.mesh(ground, land, Vector3.ZERO, paint)
 	RelayGeometry.body(terrain, land.create_trimesh_shape())
 
@@ -184,13 +187,13 @@ func _sky() -> void:
 
 
 func _border() -> void:
-	for side in [-1, 1]:
-		_block(Vector3(side*37,1.5,0), Vector3(0.45,6.7,88), FENCE, true)
-		_block(Vector3(0,1.5,side*43), Vector3(74,6.7,0.45), FENCE, true)
-		for z in range(-40, 41, 7):
-			_block(Vector3(side*36.7,1.5,z), Vector3(0.38,6.9,0.34), STEEL)
-		for x in range(-35, 36, 7):
-			_block(Vector3(x,1.5,side*42.7), Vector3(0.31,6.9,0.34), STEEL)
+	for side in [-1.0,1.0]:
+		_finishes.box(ground,Vector3(side*37,1.5,0),Vector3(0.45,7.4,88),"iron",FENCE,true)
+		_finishes.box(ground,Vector3(0,1.5,side*43),Vector3(74,7.4,0.45),"iron",FENCE,true)
+		for z in range(-40,41,4):
+			_finishes.box(ground,Vector3(side*36.72,1.5,z),Vector3(0.21,7.50,0.18),"iron",STEEL)
+		for x in range(-35,36,4):
+			_finishes.box(ground,Vector3(x,1.5,side*42.72),Vector3(0.18,7.50,0.21),"iron",STEEL)
 
 
 func _station() -> void:
@@ -202,157 +205,84 @@ func _station() -> void:
 
 
 func _quarry() -> void:
-	var work := _building(Vector2(-1,2), Vector2(8,7), 3.1, Color("#78715c"), "采石场工棚")
-	_terminal(work + Vector3(-1.8,0,-1.65), "quarry_log", "交接簿")
-	_crate(work + Vector3(2.1,0,-1.65), "quarry_crate", "工棚补给箱",
-		{SupplyRules.Kind.WOOD: 5, SupplyRules.Kind.CAN: 2, SupplyRules.Kind.STONE: 4})
-	_block(Vector3(5,0.66,6), Vector3(2.6,1.32,2.8), RUST, true)
-	for side in [-1,1]:
-		for i in range(8):
-			var x: float = side * (26 + (i%3)*2.8)
-			var z := float(-34 + i*9)
-			_rock(surface(Vector2(x,z)), Vector3(2.9,1.4+0.52*(i%3),3.2), Color("#625f53"))
-		for i in range(6):
-			var x: float = side * (22 + 4*(i%2))
-			var z := float(-26 + i*12)
-			_pine(surface(Vector2(x,z)), 2.8 + (i%3)*0.55)
+	var work := _structure("quarry", "采石场工棚", Vector2(-1,2), Vector2(8.0,7.0),
+		RegionalBuilding.Style.SERVICE, Color("#c7b998"), true)
+	_terminal(work.to_global(Vector3(-1.8,0,-1.65)), "quarry_log", "交接簿")
+	_stock(work, "quarry_crate", "工棚木箱", {SupplyRules.Kind.WOOD: 5, SupplyRules.Kind.CAN: 2, SupplyRules.Kind.STONE: 4})
+	var weigh := _structure("weigh", "地磅值班室", Vector2(7.8,-13), Vector2(6.7,5.8),
+		RegionalBuilding.Style.DISPATCH, Color("#b4b8a2"), true)
+	_stock(weigh, "weigh_crate", "值班室木箱", {SupplyRules.Kind.WOOD: 2, SupplyRules.Kind.CAN: 1})
+	var repair := _structure("quarry_repair", "机修间", Vector2(-8.4,15.2), Vector2(6.9,5.9),
+		RegionalBuilding.Style.SERVICE, Color("#bda48a"), true)
+	_stock(repair, "quarry_repair_crate", "机修间木箱", {SupplyRules.Kind.WOOD: 2, SupplyRules.Kind.STONE: 3})
 
 
 func _city() -> void:
-	for side in [-1,1]:
-		_block(Vector3(side*5.1,0.071,1), Vector3(2.2,0.14,79), Color("#777b73"), true)
-		for z in range(-26, 34, 12):
-			_block(Vector3(side*4.05,0.018,z), Vector3(0.16,0.036,5.0), Color("#b6a67f"))
-	for z in range(-26, 34, 7):
-		_block(Vector3(0,0.013,z), Vector3(0.16,0.02,2.2), Color("#b3a88c"))
-	var clinic := _building(Vector2(-14,-8), Vector2(11,8), 4.0, Color("#848b7c"), "社区诊所", true)
-	var dispatch := _building(Vector2(14,1), Vector2(12,10), 4.7, Color("#8b6e5f"), "旧城调度站", true)
-	var depot := _building(Vector2(-12,15), Vector2(10,8), 3.6, Color("#77786b"), "物资库")
-	_terminal(dispatch + Vector3(-2.4,0,-2), "city_dispatch", "调度录音")
-	_crate(dispatch + Vector3(2.8,0,-2.1), "dispatch_crate", "调度站补给箱",
-		{SupplyRules.Kind.WOOD: 4, SupplyRules.Kind.CAN: 2, SupplyRules.Kind.STONE: 3})
-	_crate(clinic + Vector3(1.9,0,-2.1), "clinic_crate", "诊所补给箱",
-		{SupplyRules.Kind.CAN: 5, SupplyRules.Kind.WOOD: 2})
-	_crate(depot + Vector3(-1.8,0,-1.7), "depot_crate", "库房补给箱",
-		{SupplyRules.Kind.CAN: 2, SupplyRules.Kind.WOOD: 6, SupplyRules.Kind.STONE: 5})
-	for side in [-1,1]:
-		for index in range(4):
-			_tower(Vector2(side*(26 + 2*(index%2)), -25 + index*18), index + 2)
-	for p in [Vector2(-2,-11), Vector2(2,7), Vector2(-2.5,21)]:
-		_wreck(p)
+	var clinic := _structure("clinic", "社区诊所", Vector2(-14,-8), Vector2(10.5,8.9),
+		RegionalBuilding.Style.CLINIC, Color("#b5c0aa"), false)
+	_stock(clinic, "clinic_crate", "诊所木箱", {SupplyRules.Kind.CAN: 5, SupplyRules.Kind.WOOD: 2})
+	var dispatch := _structure("dispatch", "旧城调度站", Vector2(14,1), Vector2(11.5,10.0),
+		RegionalBuilding.Style.DISPATCH, Color("#cba892"), false, 2)
+	_terminal(dispatch.to_global(Vector3(-2.4,0,-2)), "city_dispatch", "调度录音")
+	_stock(dispatch, "dispatch_crate", "调度站木箱", {SupplyRules.Kind.WOOD: 4, SupplyRules.Kind.CAN: 2, SupplyRules.Kind.STONE: 3})
+	var depot := _structure("depot", "物资库", Vector2(-12,15), Vector2(9.0,8.0),
+		RegionalBuilding.Style.STORE, Color("#b4a98e"), false)
+	_stock(depot, "depot_crate", "库房木箱", {SupplyRules.Kind.CAN: 2, SupplyRules.Kind.WOOD: 6, SupplyRules.Kind.STONE: 5})
+	var store := _structure("store", "街口杂货铺", Vector2(13,-20), Vector2(8.5,7.6),
+		RegionalBuilding.Style.STORE, Color("#c5b594"), false)
+	_stock(store, "store_crate", "杂货铺木箱", {SupplyRules.Kind.CAN: 2, SupplyRules.Kind.WOOD: 1})
+	var home := _structure("old_home", "旧住址", Vector2(-13,-24.7), Vector2(8.6,8.1),
+		RegionalBuilding.Style.STORE, Color("#b2b5a5"), false, 2)
+	_stock(home, "home_crate", "住户木箱", {SupplyRules.Kind.CAN: 1, SupplyRules.Kind.WOOD: 2})
+	var post := _structure("post", "邮务所", Vector2(13,25), Vector2(9.0,8.1),
+		RegionalBuilding.Style.DISPATCH, Color("#b3ada4"), false, 2)
+	_stock(post, "post_crate", "邮务所木箱", {SupplyRules.Kind.WOOD: 2, SupplyRules.Kind.STONE: 2})
+	var workshop := _structure("city_repair", "维修铺", Vector2(-13,31), Vector2(8.6,7.1),
+		RegionalBuilding.Style.SERVICE, Color("#c4a08c"), true)
+	_stock(workshop, "city_repair_crate", "维修铺木箱", {SupplyRules.Kind.WOOD: 2, SupplyRules.Kind.STONE: 2})
 
 
 func _basin() -> void:
-	var shelter_at := _building(Vector2(1,22), Vector2(8,8), 3.1, Color("#706c58"), "应急中继棚")
-	_terminal(shelter_at + Vector3(-1.8,0,-1.7), "basin_relay", "应急中继")
-	_crate(shelter_at + Vector3(2.0,0,-1.65), "relay_crate", "中继棚补给箱",
-		{SupplyRules.Kind.CAN: 3, SupplyRules.Kind.WOOD: 4})
+	var shelter_at := _structure("relay", "应急中继棚", Vector2(1,22), Vector2(8.0,8.0),
+		RegionalBuilding.Style.RELAY, Color("#a1b1a0"), false)
+	_terminal(shelter_at.to_global(Vector3(-1.8,0,-1.7)), "basin_relay", "应急中继")
+	_stock(shelter_at, "relay_crate", "中继棚木箱", {SupplyRules.Kind.CAN: 3, SupplyRules.Kind.WOOD: 4})
+	var valve := _structure("valve", "阀门值房", Vector2(8.6,-20), Vector2(6.8,6.1),
+		RegionalBuilding.Style.SERVICE, Color("#b8a687"), true)
+	_stock(valve, "valve_crate", "值房木箱", {SupplyRules.Kind.CAN: 2, SupplyRules.Kind.STONE: 2})
+	var sampling := _structure("sampling", "采样室", Vector2(-8.1,7.4), Vector2(6.5,6.0),
+		RegionalBuilding.Style.CLINIC, Color("#bcc0ab"), true)
+	_stock(sampling, "sampling_crate", "采样室木箱", {SupplyRules.Kind.WOOD: 2, SupplyRules.Kind.CAN: 1})
 	for side in [-1,1]:
-		for i in range(9):
-			var at := surface(Vector2(side*(24+(i%3)*3), -34+i*8))
-			_rock(at, Vector3(3.8,1.1 + (i%4)*0.50,3.7), Color("#77644c"))
-	for side in [-1,1]:
-		var point := surface(Vector2(side*5,25))
-		_block(point + Vector3.UP*3.7, Vector3(0.18,7.4,0.18), RUST, true)
+		var point := surface(Vector2(side*5.3,25))
+		_finishes.box(ground,point+Vector3.UP*3.7,Vector3(0.18,7.4,0.18),"iron",RUST,true)
 		for i in range(4):
-			_block(point + Vector3.UP*(5.0+i*0.52), Vector3(1.9-i*0.36,0.11,0.15), STEEL)
-		_block(point + Vector3.UP*7.36, Vector3(0.21,0.16,0.22), Color("#fd915d"), false, 1.0)
+			_finishes.box(ground,point+Vector3.UP*(5.0+i*0.52),Vector3(1.9-i*0.36,0.11,0.15),"iron",STEEL)
+		_block(point+Vector3.UP*7.36,Vector3(0.21,0.16,0.22),Color("#fd915d"),false,1.0)
 
 
-func _building(flat: Vector2, size: Vector2, h: float, tint: Color, title: String, upper := false) -> Vector3:
-	var at := surface(flat)
-	var w := size.x
-	var d := size.y
-	_block(at + Vector3(0,-0.086,0), Vector3(w+0.3,0.17,d+0.32), CONCRETE, true)
-	_block(at + Vector3(0,h/2,-d/2), Vector3(w,h,0.32), tint, true)
-	for side in [-1,1]:
-		_block(at + Vector3(side*w/2,h/2,0), Vector3(0.34,h,d), tint, true)
-		_block(at + Vector3(side*(w/4+0.66),h/2,d/2), Vector3(w/2-1.3,h,0.36), tint, true)
-		_block(at + Vector3(side*1.31,1.09,d/2+0.22), Vector3(0.18,2.18,0.21), RUST)
-		for i in range(3):
-			var x: float = side*(w/2-0.58-i*0.43)
-			_block(at + Vector3(x,1.81,d/2+0.22), Vector3(0.33,0.91,0.10), STEEL)
-			_block(at + Vector3(x,1.35,d/2+0.28), Vector3(0.40,0.10,0.14), CONCRETE)
-		if id == 2:
-			for z in [-d*0.33, 0.0, d*0.33]:
-				_recess(at + Vector3(side*(w/2 + 0.20), 2.12, z), true)
-			_block(at + Vector3(side*(w/2+0.20), 0.32, 0), Vector3(0.14, 0.45, d+0.05), tint.darkened(0.27))
-		_block(at + Vector3(side*(w/2-1.05),0.38,d/2+0.24), Vector3(1.20,0.45,0.10), CONCRETE.darkened(0.20))
-	_block(at + Vector3(0,(h+2.16)/2,d/2), Vector3(2.6,h-2.16,0.37), tint, true)
-	_block(at + Vector3(0,h+0.10,0), Vector3(w+0.56,0.24,d+0.63), STEEL, true)
-	_block(at + Vector3(0,2.18,d/2+0.25), Vector3(2.82,0.16,0.24), RUST)
-	RelayGeometry.label(ground, title, at + Vector3(0, h-0.31, d/2+0.45))
-	if id == 2:
-		for x in [-w*0.34, 0.0, w*0.34]:
-			_recess(at + Vector3(x, 2.1, -d/2-0.20), false, -1)
-		_block(at + Vector3(0, h-0.22, -d/2-0.22), Vector3(w+0.25,0.19,0.19), tint.darkened(0.27))
-	if upper:
-		var top := at + Vector3(0, h+1.5, -0.53)
-		_block(top, Vector3(w*0.87,3.0,d*0.84), tint.darkened(0.14))
-		for i in range(-3,4):
-			_block(top + Vector3(i*w/9,0.10,d*0.43), Vector3(0.53,1.04,0.09), STEEL)
-			_block(top + Vector3(i*w/9,0.10,-d*0.43), Vector3(0.53,1.04,0.09), STEEL)
-		_block(top + Vector3.UP*1.49, Vector3(w*0.92,0.23,d*0.89), CONCRETE)
-	return at
+func _structure(code: String, title: String, flat: Vector2, dimensions: Vector2, use: int,
+		tint: Color, roof_pitch: bool, floors := 1) -> RegionalBuilding:
+	var room := RegionalBuilding.new()
+	room.name = code
+	room.position = surface(flat)
+	ground.add_child(room)
+	room.construct(code,title,dimensions,floors,use,tint,roof_pitch,_finishes)
+	buildings.append(room)
+	return room
 
 
-func _recess(at: Vector3, side_wall: bool, depth_sign := 1) -> void:
-	var depth := Vector3.RIGHT * signf(at.x) if side_wall else Vector3.BACK * depth_sign
-	var sill_size := Vector3(0.20, 0.12, 1.16) if side_wall else Vector3(1.16, 0.12, 0.20)
-	var well_size := Vector3(0.13, 1.12, 0.96) if side_wall else Vector3(0.96, 1.12, 0.13)
-	var sash_size := Vector3(0.06, 1.01, 0.047) if side_wall else Vector3(0.047, 1.01, 0.06)
-	_block(at, well_size, STEEL)
-	_block(at + depth*0.11 - Vector3.UP*0.52, sill_size, CONCRETE)
-	_block(at + depth*0.09, sash_size, RUST)
-	var slat := Vector3(0.11,0.12,1.17) if side_wall else Vector3(1.17,0.12,0.11)
-	var plank := _block(at + depth*0.14 + Vector3.UP*0.13, slat, Color("#8c735b"))
-	if side_wall:
-		plank.rotation.x = 0.27
-	else:
-		plank.rotation.z = -0.27
-
-
-func _tower(flat: Vector2, floors: int) -> void:
-	var at := surface(flat)
-	var height := 2.6*floors
-	_block(at + Vector3.UP*height/2, Vector3(8,height,8), CONCRETE.darkened(0.15), true)
-	for floor in range(floors):
-		var y := floor*2.6
-		_block(at + Vector3(0,y+0.19,4.03), Vector3(8.1,0.18,0.16), STEEL)
-		for column in range(-2, 3):
-			var color := STEEL if (floor+column)%3 == 0 else Color("#596063")
-			_block(at + Vector3(column*1.36,y+1.25,4.04), Vector3(0.91,1.24,0.08), color)
-	_block(at + Vector3.UP*height, Vector3(8.3,0.30,8.3), RUST)
-
-
-func _wreck(flat: Vector2) -> void:
-	var at := surface(flat)
-	_block(at + Vector3.UP*0.42, Vector3(1.63,0.66,3.0), RUST, true)
-	_block(at + Vector3(0,0.87,-0.19), Vector3(1.32,0.38,1.40), STEEL)
-	for side in [-1,1]:
-		for front in [-1,1]:
-			_block(at + Vector3(side*0.77,0.19,front*0.87), Vector3(0.33,0.42,0.55), STEEL)
-		_block(at + Vector3(side*0.56,0.43,1.51), Vector3(0.27,0.19,0.05), Color("#bba47f"))
-
-
-func _rock(at: Vector3, scale_to: Vector3, tint: Color) -> void:
-	var stone := SphereMesh.new()
-	stone.radial_segments = 6
-	stone.rings = 3
-	var visual := RelayGeometry.mesh(ground, stone, at + Vector3.UP*0.23, _paint(tint))
-	visual.scale = scale_to
-	RelayGeometry.body(visual, stone.create_convex_shape())
-
-
-func _pine(at: Vector3, height: float) -> void:
-	_block(at + Vector3.UP*0.95, Vector3(0.24,1.9,0.24), Color("#695641"), true)
-	for i in range(3):
-		var tier := CylinderMesh.new()
-		tier.top_radius = 0.04
-		tier.bottom_radius = 1.25 - i*0.25
-		tier.height = height*0.52
-		tier.radial_segments = 7
-		RelayGeometry.mesh(ground, tier, at + Vector3.UP*(1.42+i*height*0.29), _paint(Color("#525d45").lightened(i*0.045)))
+func _stock(room: RegionalBuilding, wood_key: String, wood_label: String, contents: Dictionary) -> void:
+	var dimensions := room.footprint
+	var wood := Vector3(dimensions.x*0.26,0,-dimensions.y*0.235)
+	if room.floors == 2:
+		wood.x = minf(wood.x,room.footprint.x/2-2.64)
+	room.crates.append(_crate(room.to_global(wood),wood_key,wood_label,contents,false))
+	var iron := Vector3(-dimensions.x*0.27,0,dimensions.y*0.27)
+	if room.floors == 2:
+		iron = Vector3(0.0,RegionalBuilding.STOREY,-dimensions.y*0.23)
+	room.crates.append(_crate(room.to_global(iron),room.code+"_iron_case","铁制补给箱",
+		{SupplyRules.Kind.CAN: 1, SupplyRules.Kind.STONE: 2},true))
 
 
 func _portal(flat: Vector2) -> void:
@@ -369,11 +299,27 @@ func _portal(flat: Vector2) -> void:
 
 
 func _terminal(at: Vector3, key: String, title: String) -> void:
-	var terminal := _site(RelaySite.Role.STORY, key, title, at + Vector3.UP*1.04)
-	terminal.mark(title, Vector3(0,0.56,0))
-	_table(at, RUST)
-	_block(at + Vector3.UP*1.09, Vector3(0.92,0.34,0.52), STEEL)
-	_block(at + Vector3(0.17,1.12,0.27), Vector3(0.36,0.17,0.022), LIGHT, false, 0.74)
+	var terminal := _site(RelaySite.Role.STORY,key,title,at+Vector3.UP*1.17)
+	terminal.mark(title,Vector3(0,0.51,0))
+	if key == "quarry_log":
+		_table(at,RUST)
+		var ledger := _finishes.box(ground,at+Vector3(0.19,0.947,0.11),Vector3(0.44,0.054,0.33),
+			"wood",Color("#8d765c"))
+		ledger.rotation.y = -0.30
+		for face in [-1.0,1.0]:
+			_finishes.box(ledger,Vector3(face*0.105,0.031,0),Vector3(0.203,0.014,0.26),"floor",Color("#d4c69c"))
+		_finishes.box(ground,at+Vector3(-0.54,0.99,-0.24),Vector3(0.23,0.157,0.31),"iron",STEEL)
+		return
+	var kit := STATION_FITTINGS.instantiate()
+	var radio := kit.get_node("LoggingDeskAndRadio") as MeshInstance3D
+	var stand := RelayGeometry.mesh(ground,radio.mesh,at+Vector3(2.448,0,2.52),null)
+	stand.scale = Vector3(0.72,1.0,0.72)
+	kit.free()
+	_finishes.box(ground,at+Vector3.UP*0.867,Vector3(1.63,0.12,0.56),"wood",STEEL,true).hide()
+	if key == "basin_relay":
+		_finishes.box(ground,at+Vector3(-0.84,1.36,-0.25),Vector3(0.37,0.91,0.36),"iron",RUST)
+		for i in range(6):
+			_finishes.box(ground,at+Vector3(-0.84,1.14+i*0.065,-0.063),Vector3(0.219,0.025,0.021),"iron",STEEL)
 
 
 func _table(at: Vector3, tint: Color) -> void:
@@ -382,14 +328,43 @@ func _table(at: Vector3, tint: Color) -> void:
 		_block(at + Vector3(side*0.57,0.40,0), Vector3(0.18,0.80,0.62), STEEL, true)
 
 
-func _crate(at: Vector3, key: String, title: String, contents: Dictionary) -> void:
-	var crate := _site(RelaySite.Role.CRATE, key, title, at + Vector3.UP*0.91)
+func _crate(at: Vector3, key: String, title: String, contents: Dictionary, iron: bool) -> RelaySite:
+	var crate := _site(RelaySite.Role.CRATE,key,title,at+Vector3.UP*0.94)
 	crate.contents = contents
-	crate.mark(title, Vector3(0,0.43,0))
-	var model := CRATE.instantiate() as Node3D
-	model.position = at
-	ground.add_child(model)
-	_block(at + Vector3.UP*0.40, Vector3(1.73,0.80,0.97), Color("#3e4034"), true).hide()
+	crate.mark(title,Vector3(0,0.30,0),Color("#b8d5cc") if iron else Color("#eab572"))
+	if iron:
+		var model := CRATE.instantiate() as Node3D
+		model.position = at
+		model.scale = Vector3.ONE*0.75
+		ground.add_child(model)
+		_block(at+Vector3.UP*0.35,Vector3(1.45,0.70,0.83),Color("#3e4034"),true).hide()
+	else:
+		_wood_crate(at, crate)
+	return crate
+
+
+func _wood_crate(at: Vector3, crate: RelaySite) -> void:
+	var oak := Color("#b29974")
+	var assembly := Node3D.new()
+	assembly.position = at
+	ground.add_child(assembly)
+	_finishes.box(assembly,Vector3(0,0.058,0),Vector3(1.15,0.115,0.67),"wood",oak.darkened(0.18),true)
+	for front in [-1.0,1.0]:
+		for board in range(3):
+			_finishes.box(assembly,Vector3(0,0.155+board*0.133,front*0.304),Vector3(1.15,0.126,0.058),
+				"wood",oak.darkened((board%2)*0.09))
+	for side in [-1.0,1.0]:
+		_finishes.box(assembly,Vector3(side*0.552,0.288,0),Vector3(0.063,0.432,0.62),"wood",oak)
+		for front in [-1.0,1.0]:
+			_finishes.box(assembly,Vector3(side*0.481,0.288,front*0.343),Vector3(0.092,0.438,0.055),"wood",oak.darkened(0.19))
+	_finishes.box(assembly,Vector3(0,0.261,0),Vector3(1.1,0.495,0.61),"wood",oak,true).hide()
+	var lid := Node3D.new()
+	lid.position = Vector3(0,0.52,-0.34)
+	assembly.add_child(lid)
+	for i in range(4):
+		_finishes.box(lid,Vector3(0,0.013,0.093+i*0.17),Vector3(1.19,0.060,0.166),"wood",oak.lightened((i%2)*0.08))
+	_finishes.box(lid,Vector3(0,-0.04,0.694),Vector3(0.17,0.137,0.038),"iron",STEEL)
+	crate.lid = lid
 
 
 func _site(role: int, key: String, title: String, at: Vector3) -> RelaySite:

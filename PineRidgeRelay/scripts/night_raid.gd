@@ -1,7 +1,6 @@
 class_name NightRaid
 extends RefCounted
 
-signal growled(point: Vector3)
 signal enemy_struck(point: Vector3)
 
 const INFECTED_SCENE := preload("res://scenes/infected.tscn")
@@ -57,8 +56,6 @@ func tick(delta: float, survival: SurvivalRules) -> void:
 	chasing_count = 0
 	for enemy in active:
 		var seen := _update_target(enemy, delta)
-		if enemy.tick_voice(delta, _player.global_position):
-			growled.emit(enemy.global_position + Vector3.UP * 1.35)
 		if enemy.chasing:
 			chasing_count += 1
 			if enemy.pursue(delta, seen):

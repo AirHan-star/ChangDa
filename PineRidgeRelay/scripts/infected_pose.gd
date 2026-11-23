@@ -9,7 +9,6 @@ var _cycle := 0.0
 var _gait := 0.0
 var _time := 0.0
 var _flinch := 0.0
-var _voice := 0.0
 var _strike_side := 1.0
 var _fall := 0.0
 
@@ -26,10 +25,6 @@ func stagger() -> void:
 	_flinch = 1.0
 
 
-func growl(duration: float) -> void:
-	_voice = duration
-
-
 func next_strike() -> void:
 	_strike_side = -_strike_side
 
@@ -40,7 +35,6 @@ func collapse(progress: float) -> void:
 
 func animate(delta: float, speed: float, chasing: bool, windup: float, recovery: float) -> void:
 	_time += delta
-	_voice = maxf(0.0, _voice - delta)
 	_flinch = maxf(0.0, _flinch - delta * 2.8)
 	var stride := lerpf(0.62, 0.75, float(chasing))
 	_gait = move_toward(_gait, clampf(speed / 1.5, 0.0, 1.0), delta * 5.2)
@@ -78,9 +72,8 @@ func animate(delta: float, speed: float, chasing: bool, windup: float, recovery:
 		-twist * 0.85 + pulse * 0.043, -0.13 - roll * 0.41)) * head.basis
 	_rig.set_bone_global_pose(_head, head)
 	var jaw := _rig.get_bone_global_pose(_jaw)
-	var vocal := minf(_voice * 5.0, 1.0) * (0.12 + 0.08 * sin(_time * 14.0))
 	jaw.basis = Basis(head.basis * (_rest[_head].basis.inverse() * Vector3.RIGHT),
-		0.07 + vocal + hit * 0.21 + draw * 0.10) * jaw.basis
+		0.07 + hit * 0.21 + draw * 0.10) * jaw.basis
 	_rig.set_bone_global_pose(_jaw, jaw)
 	_arm(0, torso, left.x, chasing, draw, hit, stagger_weight)
 	_arm(1, torso, right.x, chasing, draw, hit, stagger_weight)
