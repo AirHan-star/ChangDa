@@ -15,6 +15,8 @@ const WARNING := Color("#f39282")
 @onready var phase_label: Label = $Screen/Survival/Content/Phase
 @onready var health_label: Label = $Screen/Survival/Content/Gate
 @onready var health_bar: ProgressBar = $Screen/Survival/Content/Health
+@onready var player_health_label: Label = $Screen/PlayerVitals/Content/HealthLabel
+@onready var player_health_bar: ProgressBar = $Screen/PlayerVitals/Content/HealthBar
 @onready var raid_label: Label = $Screen/Survival/Content/Raid
 @onready var gear: GearPanels = $Screen/Gear
 @onready var toast: Label = $Screen/Toast
@@ -56,7 +58,13 @@ func show_supplies(rules: SupplyRules, equipped_tool: int) -> void:
 	gear.refresh(rules, equipped_tool)
 
 
-func show_survival(state: SurvivalRules, spawned: int, active: int) -> void:
+func show_player_health(points: int) -> void:
+	player_health_label.text = "生命 %d / %d" % [points, SurvivalRules.PLAYER_MAX_HEALTH]
+	player_health_bar.value = points
+	player_health_bar.modulate = MINT if points > 55 else (ACCENT if points > 25 else WARNING)
+
+
+func show_survival(state: SurvivalRules, spawned: int, active: int, chasing: int) -> void:
 	var phase := state.phase
 	var second := ceili(state.remaining)
 	var timer := "%02d:%02d" % [floori(second / 60.0), second % 60]
@@ -65,7 +73,7 @@ func show_survival(state: SurvivalRules, spawned: int, active: int) -> void:
 	if phase == SurvivalRules.Phase.WON:
 		phase_name = "天亮"
 	elif phase == SurvivalRules.Phase.LOST:
-		phase_name = "气象站失守"
+		phase_name = "幸存者倒下" if state.loss_cause == SurvivalRules.LossCause.PLAYER else "气象站失守"
 	phase_label.text = "%s   %s" % [phase_name, timer] if not state.is_over() else phase_name
 	var phase_color := ACCENT if is_day else NIGHT_BLUE
 	if phase_label.get_theme_color(&"font_color") != phase_color:
@@ -78,7 +86,9 @@ func show_survival(state: SurvivalRules, spawned: int, active: int) -> void:
 	if is_day:
 		raid_label.text = "天黑后大门关闭 · 白天按 R 加固"
 	else:
-		raid_label.text = "感染者  %d 在场   /   %d 已来袭" % [active, spawned]
+		raid_label.text = "感染者 %d 在场 · %d 追击你" % [active, chasing] if chasing > 0 else (
+			"感染者  %d 在场   /   %d 已来袭" % [active, spawned])
+	raid_label.modulate = WARNING if chasing > 0 and not state.is_over() else Color.WHITE
 
 
 func set_prompt(message: String) -> void:
@@ -92,12 +102,18 @@ func notify(message: String, seconds := 2.2) -> void:
 	_toast_time = seconds
 
 
-func show_result(won: bool, health: int, delivered: bool) -> void:
+func show_result(state: SurvivalRules, delivered: bool) -> void:
+	var won := state.phase == SurvivalRules.Phase.WON
 	set_prompt("")
 	toast.hide()
-	result_title.text = "守到天亮 · 胜利" if won else "气象站失守 · 失败"
+	if won:
+		result_title.text = "守到天亮 · 胜利"
+	elif state.loss_cause == SurvivalRules.LossCause.PLAYER:
+		result_title.text = "幸存者倒下 · 失败"
+	else:
+		result_title.text = "气象站失守 · 失败"
 	result_title.add_theme_color_override(&"font_color", MINT if won else WARNING)
 	var delivery := "补给任务完成" if delivered else "补给任务未完成"
-	result_detail.text = "剩余门耐久 %d  ·  %s" % [health, delivery]
+	result_detail.text = "生命 %d  ·  门耐久 %d  ·  %s" % [state.player_health, state.health, delivery]
 	result.show()
 	$Screen/Result/Card/Content/Restart.grab_focus()

@@ -79,6 +79,11 @@ open_backpack={
 "events": [Object(InputEventKey,"physical_keycode":66)]
 }
 
+eat_ration={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":72)]
+}
+
 [layer_names]
 3d_physics/layer_1="World"
 3d_physics/layer_2="Player"

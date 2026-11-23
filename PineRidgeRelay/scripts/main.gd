@@ -25,19 +25,22 @@ var raid: NightRaid
 var _requested: Array[StringName] = []
 var _swing_in := 0.0
 var _restarting := false
+var _last_player_health := SurvivalRules.PLAYER_MAX_HEALTH
 var _mining_target: MineableOre
 var _mouse_before_panel := Input.MOUSE_MODE_CAPTURED
 
 
 func _ready() -> void:
 	field = ResourceField.new(supplies, ores, rules)
-	raid = NightRaid.new($Clearing/Infected, gate)
+	raid = NightRaid.new($Clearing/Infected, gate, player)
 	rules.changed.connect(_refresh_inventory)
 	survival.phase_changed.connect(_phase_changed)
+	survival.player_health_changed.connect(_refresh_player_health)
 	hud.restart_requested.connect(_restart)
 	hud.gear.panel_requested.connect(_toggle_panel)
 	hud.gear.craft_requested.connect(_craft)
 	hud.gear.equip_requested.connect(_equip)
+	hud.gear.ration_requested.connect(_eat_ration)
 	player.tool_impact.connect(_on_tool_impact)
 	_refresh_inventory()
 	_refresh_survival()
@@ -86,7 +89,9 @@ func _physics_process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if survival.is_over():
 		return
-	if event.is_action_pressed(&"open_crafting"):
+	if event.is_action_pressed(&"eat_ration"):
+		_eat_ration()
+	elif event.is_action_pressed(&"open_crafting"):
 		_toggle_panel(GearPanels.PanelKind.CRAFT)
 	elif event.is_action_pressed(&"open_backpack"):
 		_toggle_panel(GearPanels.PanelKind.BAG)
@@ -174,6 +179,18 @@ func _equip(tool: SupplyRules.Tool) -> void:
 	if rules.has_tool(tool):
 		player.equip(tool)
 		_refresh_inventory()
+
+
+func _eat_ration() -> void:
+	if survival.is_over():
+		return
+	var restored := survival.eat_ration(rules)
+	if restored > 0:
+		hud.notify("食用罐头 · 生命 +%d" % restored)
+	elif survival.player_health == SurvivalRules.PLAYER_MAX_HEALTH:
+		hud.notify("生命已满")
+	else:
+		hud.notify("背包里没有罐头")
 
 
 func _mining_tool() -> int:
@@ -289,14 +306,14 @@ func _phase_changed() -> void:
 		gate.close_gate()
 		hud.notify("入夜 · 感染者正沿小路来袭", 4.0)
 	elif survival.is_over():
-		if survival.phase == SurvivalRules.Phase.LOST:
+		if survival.loss_cause == SurvivalRules.LossCause.GATE:
 			gate.break_gate()
 		hud.gear.show_panel(GearPanels.PanelKind.NONE)
 		player.panel_open = false
 		player.set_physics_process(false)
 		player.set_process_unhandled_input(false)
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		hud.show_result(survival.phase == SurvivalRules.Phase.WON, survival.health, rules.is_complete())
+		hud.show_result(survival, rules.is_complete())
 	_refresh_survival()
 
 
@@ -308,8 +325,19 @@ func _restart() -> void:
 
 func _refresh_inventory() -> void:
 	hud.show_supplies(rules, player.equipped)
+	_refresh_player_health()
+
+
+func _refresh_player_health() -> void:
+	var points := survival.player_health
+	if points > 0 and points < _last_player_health:
+		hud.notify("受到攻击 · 生命 -%d" % (_last_player_health - points), 1.1)
+	_last_player_health = points
+	hud.show_player_health(points)
+	hud.gear.set_ration_available(
+		points < SurvivalRules.PLAYER_MAX_HEALTH and rules.carried(SupplyRules.Kind.CAN) > 0)
 
 
 func _refresh_survival() -> void:
 	lighting.update_light(survival.phase, survival.remaining)
-	hud.show_survival(survival, raid.spawned, raid.active.size())
+	hud.show_survival(survival, raid.spawned, raid.active.size(), raid.chasing_count)

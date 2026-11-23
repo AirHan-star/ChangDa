@@ -6,20 +6,32 @@ const MAX_ACTIVE := 4
 const MAX_TOTAL := 10
 const SPAWN_INTERVAL := 3.8
 const HIT_DAMAGE := 3
+const PLAYER_HIT_DAMAGE := 14
+const PLAYER_AGGRO_CHANCE := 0.38
+const PLAYER_NOTICE_RANGE := 6.5
+const PLAYER_CHASE_RANGE := 9.5
+const PLAYER_CHASE_TIME := 10.0
+const PLAYER_SIGHT_GRACE := 1.25
+const MAX_PLAYER_CHASERS := 2
 const LANES: Array[float] = [-0.82, 0.0, 0.82]
 const SWORD_RANGE := 2.55
 const SWORD_CONE := 0.30
 
 var spawned := 0
 var active: Array[RelayInfected] = []
+var chasing_count := 0
 var _spawn_in := 0.0
 var _parent: Node3D
 var _gate: StationGate
+var _player: RelayPlayer
+var _rng := RandomNumberGenerator.new()
 
 
-func _init(parent: Node3D, gate: StationGate) -> void:
+func _init(parent: Node3D, gate: StationGate, player: RelayPlayer) -> void:
 	_parent = parent
 	_gate = gate
+	_player = player
+	_rng.randomize()
 
 
 func tick(delta: float, survival: SurvivalRules) -> void:
@@ -27,16 +39,69 @@ func tick(delta: float, survival: SurvivalRules) -> void:
 	if _spawn_in == 0.0 and spawned < MAX_TOTAL and active.size() < MAX_ACTIVE:
 		_spawn_in = SPAWN_INTERVAL if _spawn() else 0.45
 
+	var visible_pursuers := _update_chases(delta)
 	var stop_z := _gate.global_position.z + 0.78
 	var previous: Dictionary = {}
+	var ordered := active.duplicate()
+	# A returning pursuer may arrive behind the unit that was once behind it.
+	ordered.sort_custom(func(a: RelayInfected, b: RelayInfected) -> bool:
+		return a.global_position.z < b.global_position.z)
+	for infected in ordered:
+		if infected.chase_left > 0.0:
+			if infected.pursue(delta, visible_pursuers[infected]):
+				survival.damage_player(PLAYER_HIT_DAMAGE)
+		else:
+			var ahead: RelayInfected = previous.get(infected.lane)
+			var goal := stop_z if ahead == null else ahead.global_position.z + 1.15
+			if infected.advance(delta, _gate.global_position.x + LANES[infected.lane], goal, ahead == null):
+				survival.damage_gate(HIT_DAMAGE)
+			previous[infected.lane] = infected
+		if survival.is_over():
+			return
+
+
+func _update_chases(delta: float) -> Dictionary:
+	var visible_pursuers: Dictionary = {}
+	var player_at := _player.global_position
 	for infected in active:
-		var ahead: RelayInfected = previous.get(infected.lane)
-		var goal := stop_z if ahead == null else ahead.global_position.z + 1.15
-		if infected.advance(delta, _gate.global_position.x + LANES[infected.lane], goal, ahead == null):
-			survival.damage_gate(HIT_DAMAGE)
-			if survival.is_over():
-				return
-		previous[infected.lane] = infected
+		if infected.chase_left <= 0.0:
+			continue
+		infected.chase_left = maxf(0.0, infected.chase_left - delta)
+		if infected.chase_left == 0.0 or infected.global_position.distance_squared_to(player_at) > PLAYER_CHASE_RANGE ** 2:
+			infected.chase_left = 0.0
+			continue
+		var visible := _sees_player(infected)
+		if visible:
+			infected.last_seen_player = player_at
+			infected.sight_lost_for = 0.0
+		else:
+			infected.sight_lost_for += delta
+			if infected.sight_lost_for >= PLAYER_SIGHT_GRACE:
+				infected.chase_left = 0.0
+				continue
+		visible_pursuers[infected] = visible
+	for infected in active:
+		if visible_pursuers.size() >= MAX_PLAYER_CHASERS:
+			break
+		if infected.player_target_checked or infected.global_position.distance_squared_to(player_at) > PLAYER_NOTICE_RANGE ** 2:
+			continue
+		if not _sees_player(infected):
+			continue
+		# One roll per infected, on first unobstructed encounter.
+		infected.player_target_checked = true
+		if _rng.randf() < PLAYER_AGGRO_CHANCE:
+			infected.chase_left = PLAYER_CHASE_TIME
+			infected.last_seen_player = player_at
+			visible_pursuers[infected] = true
+	chasing_count = visible_pursuers.size()
+	return visible_pursuers
+
+
+func _sees_player(infected: RelayInfected) -> bool:
+	var eye := infected.global_position + Vector3.UP * 1.35
+	var torso := _player.global_position + Vector3.UP * 0.95
+	var query := PhysicsRayQueryParameters3D.create(eye, torso, 9)
+	return _parent.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
 func strike(origin: Vector3, facing: Vector3, player_rid: RID) -> bool:

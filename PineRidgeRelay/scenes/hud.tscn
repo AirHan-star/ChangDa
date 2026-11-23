@@ -103,7 +103,7 @@ offset_bottom = -20.0
 theme_override_font_sizes/font_size = 13
 theme_override_colors/font_outline_color = Color(0.06, 0.10, 0.09, 1)
 theme_override_constants/outline_size = 5
-text = "WASD 移动  ·  Shift 奔跑  ·  空格 跳跃\nE 交互  ·  左键 挥动"
+text = "WASD 移动  ·  Shift 奔跑  ·  空格 跳跃\nE 交互  ·  左键 挥动  ·  H 食用罐头"
 
 [node name="Survival" type="PanelContainer" parent="Screen"]
 layout_mode = 1
@@ -138,6 +138,33 @@ show_percentage = false
 [node name="Raid" type="Label" parent="Screen/Survival/Content"]
 theme_override_font_sizes/font_size = 14
 horizontal_alignment = 1
+
+[node name="PlayerVitals" type="PanelContainer" parent="Screen"]
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -206.0
+offset_right = -24.0
+offset_top = 18.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Panel")
+
+[node name="Content" type="VBoxContainer" parent="Screen/PlayerVitals"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="HealthLabel" type="Label" parent="Screen/PlayerVitals/Content"]
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+text = "生命 100 / 100"
+
+[node name="HealthBar" type="ProgressBar" parent="Screen/PlayerVitals/Content"]
+custom_minimum_size = Vector2(0, 5)
+mouse_filter = 2
+theme_override_styles/background = SubResource("HealthBackground")
+theme_override_styles/fill = SubResource("HealthFill")
+show_percentage = false
 
 [node name="Toast" type="Label" parent="Screen"]
 visible = false

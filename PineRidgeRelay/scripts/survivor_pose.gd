@@ -10,8 +10,8 @@ const PICK_WRISTS: Array[Vector3] = [
 	Vector3(0.31, 0.80, 0.44), Vector3(0.34, 0.76, 0.25), Vector3(0.37, 0.93, 0.03),
 ]
 const PICK_ANGLES: Array[Vector3] = [
-	Vector3(-0.18, 0.0, -0.10), Vector3(-2.77, 0.08, 0.13),
-	Vector3(-1.19, -0.03, 0.05), Vector3(-0.53, -0.10, -0.13), Vector3(-0.18, 0.0, -0.10),
+	Vector3(-1.13, 0.14, -0.08), Vector3(-2.77, 0.08, 0.13),
+	Vector3(-1.19, -0.03, 0.05), Vector3(-0.53, -0.10, -0.13), Vector3(-1.13, 0.14, -0.08),
 ]
 const SWORD_WRISTS: Array[Vector3] = [
 	Vector3(0.37, 0.93, 0.03), Vector3(0.59, 1.35, -0.17),
@@ -50,8 +50,9 @@ var _cycle := 0.0
 var _gait := 0.0
 var _elapsed := 0.0
 var _reach_left := 0.0
-var _grip := Vector3.ZERO
-var tool_basis := Basis.IDENTITY
+var _grip := Transform3D.IDENTITY
+var _pick_mount := Transform3D.IDENTITY
+var _tool_basis := Basis.IDENTITY
 
 
 func _ready() -> void:
@@ -64,6 +65,11 @@ func _ready() -> void:
 	for side in ["L", "R"]:
 		_legs.append(_limb("Thigh" + side, "Shin" + side, "Foot" + side))
 		_arms.append(_limb("Arm" + side, "Forearm" + side, "Hand" + side))
+	var hand_rest := _rest[_arms[1].end].basis.inverse()
+	# The pick's shaft follows the palm's transverse axis, not the forearm.
+	_pick_mount = Transform3D(
+		hand_rest * Basis(Vector3.RIGHT, -PI * 0.5),
+		hand_rest * Vector3(-0.014, -0.048, 0.017))
 	update_pose(0.0, 0.0, true)
 
 
@@ -71,22 +77,23 @@ func pick_up() -> void:
 	_reach_left = PICKUP_TIME
 
 
-func grip_position() -> Vector3:
-	return to_local(_rig.to_global(_grip))
+func grip_transform() -> Transform3D:
+	return global_transform.affine_inverse() * _rig.global_transform * _grip
 
 
-func update_pose(delta: float, speed: float, grounded: bool, tool := -1, progress := 0.0) -> void:
+func update_pose(delta: float, speed: float, grounded: bool, tool := -1,
+		progress := 0.0, swinging := false) -> void:
 	_elapsed += delta
 	_reach_left = maxf(0.0, _reach_left - delta)
 	var reach := sin(PI * _reach_left / PICKUP_TIME) * (1.0 - minf(speed / 10.0, 0.55))
-	var wielding := tool >= 0
-	var sword_swing := tool == SupplyRules.Tool.STONE_SWORD
-	var effort := sin(progress * PI) if wielding else 0.0
-	if wielding:
+	var sword_equipped := tool == SupplyRules.Tool.STONE_SWORD
+	var pick_equipped := tool >= 0 and not sword_equipped
+	var effort := sin(progress * PI) if swinging else 0.0
+	if swinging:
 		reach = 0.0
 		_reach_left = 0.0
-	var body_twist := (_sample(progress, SWORD_ANGLES).y * 0.32) if sword_swing else effort * 0.07
-	tool_basis = Basis.from_euler(_sample(progress, SWORD_ANGLES if sword_swing else PICK_ANGLES))
+	var body_twist := (_sample(progress, SWORD_ANGLES).y * 0.32) if sword_equipped else effort * 0.07
+	_tool_basis = Basis.from_euler(_sample(progress, PICK_ANGLES if pick_equipped else SWORD_ANGLES))
 	var running := smoothstep(WALK_SPEED, RUN_SPEED, speed)
 	_gait = move_toward(_gait, clampf(speed / WALK_SPEED, 0.0, 1.0), delta * 6.5)
 	var stride := lerpf(0.80, 1.02, running)
@@ -119,8 +126,9 @@ func update_pose(delta: float, speed: float, grounded: bool, tool := -1, progres
 
 	_pose_leg(_legs[0], ankle_l, step_l.z, hips)
 	_pose_leg(_legs[1], ankle_r, step_r.z, hips)
-	_pose_arm(_arms[0], torso, -1.0, step_l.x, running, reach, tool, progress)
-	_pose_arm(_arms[1], torso, 1.0, step_r.x, running, 0.0, tool, progress)
+	_pose_arm(_arms[0], torso, -1.0, step_l.x, running, reach, tool if swinging else -1, progress)
+	_pose_arm(_arms[1], torso, 1.0, step_r.x, running, 0.0, tool if swinging else -1, progress)
+	_attach_tool(pick_equipped)
 
 
 func _limb(upper: String, lower: String, end: String) -> Limb:
@@ -170,10 +178,18 @@ func _pose_arm(arm: Limb, torso: Transform3D, side: float, step: float,
 		elif tool != SupplyRules.Tool.STONE_SWORD:
 			wrist = wrist.lerp(Vector3(-0.22, 1.10, 0.27), weight * 0.58)
 	_solve_limb(arm, torso, wrist, Vector3(side * 0.29, -0.10, -0.95))
-	if side > 0.0:
-		var hand := _rig.get_bone_global_pose(arm.end)
-		var grip_offset := _rest[arm.end].basis.inverse() * Vector3(-0.008, -0.052, 0.018)
-		_grip = hand * grip_offset
+
+
+func _attach_tool(pick_equipped: bool) -> void:
+	var wrist := _arms[1].end
+	var hand := _rig.get_bone_global_pose(wrist)
+	if pick_equipped:
+		hand.basis = _tool_basis * _pick_mount.basis.inverse()
+		_rig.set_bone_global_pose(wrist, hand)
+		_grip = hand * _pick_mount
+	else:
+		var grip_offset := _rest[wrist].basis.inverse() * Vector3(-0.008, -0.052, 0.018)
+		_grip = Transform3D(_tool_basis, hand * grip_offset)
 
 
 func _sample(progress: float, keys: Array[Vector3]) -> Vector3:

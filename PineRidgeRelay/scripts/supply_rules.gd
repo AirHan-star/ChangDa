@@ -43,6 +43,14 @@ func add_stone(amount: int) -> void:
 	changed.emit()
 
 
+func consume_ration() -> bool:
+	if carried(Kind.CAN) == 0:
+		return false
+	_inventory[Kind.CAN] -= 1
+	changed.emit()
+	return true
+
+
 func can_deposit() -> bool:
 	return carried(Kind.WOOD) + carried(Kind.CAN) > 0
 

@@ -4,6 +4,7 @@ extends Control
 signal panel_requested(panel: int)
 signal craft_requested(tool: int)
 signal equip_requested(tool: int)
+signal ration_requested
 
 enum PanelKind { NONE, CRAFT, BAG }
 
@@ -29,6 +30,7 @@ var _quick_counts: Array[Label] = []
 var _bag_counts: Array[Label] = []
 var _tools: Array[Button] = []
 var _craft_buttons: Array[Button] = []
+var _ration_button: Button
 var _normal := _box(Color("#172624"), Color("#354642"), 7)
 var _hover := _box(Color("#263a35"), Color("#8bae93"), 7)
 var _equipped := _box(Color("#253f35"), Color("#a8cba3"), 7)
@@ -63,6 +65,10 @@ func refresh(rules: SupplyRules, equipped_tool: int) -> void:
 		var craft := _craft_buttons[i]
 		craft.disabled = not rules.can_craft(i)
 		craft.text = "已拥有" if owned else ("制作" if not craft.disabled else "材料不足")
+
+
+func set_ration_available(available: bool) -> void:
+	_ration_button.disabled = not available
 
 
 func _build_shortcuts() -> void:
@@ -216,9 +222,21 @@ func _build_bag() -> void:
 		var count := _corner_count()
 		face.add_child(count)
 		_bag_counts.append(count)
-	var hint := _label("点击已拥有的工具以装备", 14)
+	var footer := HBoxContainer.new()
+	footer.add_theme_constant_override(&"separation", 12)
+	_bag.add_child(footer)
+	var hint := _label("点击工具装备", 14)
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hint.modulate = Color("#bdc7a3")
-	_bag.add_child(hint)
+	footer.add_child(hint)
+	_ration_button = _button("食用罐头  [H]")
+	_ration_button.icon = RESOURCE_ICONS[SupplyRules.Kind.CAN]
+	_ration_button.expand_icon = true
+	_ration_button.add_theme_constant_override(&"icon_max_width", 25)
+	_ration_button.custom_minimum_size = Vector2(148, 36)
+	_ration_button.pressed.connect(func(): ration_requested.emit())
+	footer.add_child(_ration_button)
 
 
 func _corner_count() -> Label:

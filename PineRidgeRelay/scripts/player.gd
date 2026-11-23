@@ -79,9 +79,9 @@ func _physics_process(delta: float) -> void:
 		model.rotation.y = lerp_angle(model.rotation.y, _pickup_facing, minf(14.0 * delta, 1.0))
 	_pickup_turn_left = maxf(0.0, _pickup_turn_left - delta)
 	var motion := Vector2(get_real_velocity().x, get_real_velocity().z).length()
-	survivor.update_pose(delta, motion, is_on_floor(), _swing_tool, progress)
-	held_tool.position = survivor.grip_position()
-	held_tool.basis = survivor.tool_basis
+	var visual_tool := _swing_tool if is_swinging() else equipped
+	survivor.update_pose(delta, motion, is_on_floor(), visual_tool, progress, is_swinging())
+	held_tool.transform = survivor.grip_transform()
 	if impact:
 		tool_impact.emit(_swing_tool, _swing_facing)
 	if progress >= 1.0:

@@ -3,10 +3,18 @@ extends CharacterBody3D
 
 const SPEED := 1.95
 const HIT_INTERVAL := 2.55
+const PLAYER_REACH := 1.05
+const PLAYER_STRIKE_INTERVAL := 1.60
+const PLAYER_WINDUP := 0.48
 
 var lane: int
+var player_target_checked := false
+var chase_left := 0.0
+var sight_lost_for := 0.0
+var last_seen_player := Vector3.ZERO
 var health := 3
 var _attack_in := 0.9
+var _player_attack_in := PLAYER_WINDUP
 var _stride := 0.0
 var _hit_feedback := 0.0
 var _detour_side := 1.0
@@ -23,14 +31,55 @@ var _detour_side := 1.0
 func advance(delta: float, lane_x: float, stop_z: float, front: bool) -> bool:
 	var offset := Vector3(lane_x - global_position.x, 0.0, stop_z - global_position.z)
 	var arrived := absf(offset.z) < 0.08 and absf(offset.x) < 0.20
-	var course := Vector3.ZERO if arrived else _clear_course(offset)
+	_move(delta, Vector3.ZERO if arrived else offset, PI)
+
+	if not front or not arrived:
+		return false
+	_attack_in -= delta
+	if _attack_in <= 0.0:
+		_attack_in += HIT_INTERVAL
+		return true
+	if _attack_in > HIT_INTERVAL - 0.38:
+		_reach_out(-1.86)
+	return false
+
+
+func pursue(delta: float, may_strike: bool) -> bool:
+	var offset := last_seen_player - global_position
+	var height := absf(offset.y)
+	offset.y = 0.0
+	var distance := offset.length()
+	var in_reach := may_strike and distance <= PLAYER_REACH and height < 0.95
+	var facing := atan2(offset.x, offset.z) if not offset.is_zero_approx() else rotation.y
+	var travel := Vector3.ZERO if in_reach else offset.normalized() * maxf(distance - 0.86, 0.0)
+	_move(delta, travel, facing)
+
+	_player_attack_in = maxf(0.0, _player_attack_in - delta)
+	if not in_reach:
+		# A player who backs away can interrupt the strike before contact.
+		_player_attack_in = maxf(_player_attack_in, PLAYER_WINDUP)
+		return false
+	if _player_attack_in <= 0.0:
+		_player_attack_in = PLAYER_STRIKE_INTERVAL
+		_reach_out(-1.82)
+		return true
+	if _player_attack_in <= PLAYER_WINDUP:
+		_reach_out(lerpf(-1.82, -0.82, _player_attack_in / PLAYER_WINDUP))
+	return false
+
+
+func _reach_out(angle: float) -> void:
+	right_arm.rotation.x = angle
+	right_elbow.rotation.x = -0.34
+
+
+func _move(delta: float, offset: Vector3, rest_facing: float) -> void:
+	var course := Vector3.ZERO if offset.is_zero_approx() else _clear_course(offset)
 	var speed := minf(SPEED, offset.length() / delta)
 	velocity.x = course.x * speed
 	velocity.z = course.z * speed
-	if not course.is_zero_approx():
-		rotation.y = lerp_angle(rotation.y, atan2(course.x, course.z), minf(delta * 8.0, 1.0))
-	elif arrived:
-		rotation.y = lerp_angle(rotation.y, PI, minf(delta * 9.0, 1.0))
+	var desired_yaw := rest_facing if course.is_zero_approx() else atan2(course.x, course.z)
+	rotation.y = lerp_angle(rotation.y, desired_yaw, minf(delta * 8.0, 1.0))
 	if not is_on_floor():
 		velocity.y -= 18.0 * delta
 	move_and_slide()
@@ -46,17 +95,6 @@ func advance(delta: float, lane_x: float, stop_z: float, front: bool) -> bool:
 	right_elbow.rotation.x = -0.14 - swing * 0.26
 	_hit_feedback = maxf(0.0, _hit_feedback - delta)
 	model.rotation.z = _hit_feedback * 0.74
-
-	if not front or not arrived:
-		return false
-	_attack_in -= delta
-	if _attack_in <= 0.0:
-		_attack_in += HIT_INTERVAL
-		return true
-	if _attack_in > HIT_INTERVAL - 0.38:
-		right_arm.rotation.x = -1.86
-		right_elbow.rotation.x = -0.44
-	return false
 
 
 func _clear_course(offset: Vector3) -> Vector3:
