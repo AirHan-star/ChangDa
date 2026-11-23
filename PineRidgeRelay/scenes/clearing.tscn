@@ -1,5 +1,6 @@
-[gd_scene load_steps=107 format=3]
+[gd_scene load_steps=87 format=3]
 
+[ext_resource type="PackedScene" path="res://assets/station/station_shell.glb" id="StationShell"]
 [ext_resource type="PackedScene" path="res://scenes/wood_pickup.tscn" id="Wood"]
 [ext_resource type="PackedScene" path="res://scenes/ore.tscn" id="Ore"]
 [ext_resource type="PackedScene" path="res://scenes/station_gate.tscn" id="Gate"]
@@ -31,22 +32,6 @@ fog_density = 0.012
 
 [sub_resource type="ShaderMaterial" id="Ground"]
 shader = ExtResource("GroundShader")
-
-[sub_resource type="StandardMaterial3D" id="Concrete"]
-albedo_color = Color(0.44, 0.45, 0.37, 1)
-roughness = 0.91
-
-[sub_resource type="StandardMaterial3D" id="DarkConcrete"]
-albedo_color = Color(0.26, 0.32, 0.30, 1)
-roughness = 0.91
-
-[sub_resource type="StandardMaterial3D" id="Roof"]
-albedo_color = Color(0.61, 0.27, 0.12, 1)
-roughness = 0.91
-
-[sub_resource type="StandardMaterial3D" id="Trim"]
-albedo_color = Color(0.82, 0.40, 0.16, 1)
-roughness = 0.91
 
 [sub_resource type="StandardMaterial3D" id="Steel"]
 albedo_color = Color(0.17, 0.23, 0.22, 1)
@@ -130,91 +115,23 @@ size = Vector3(88, 0.5, 104)
 [sub_resource type="BoxShape3D" id="Shape2"]
 size = Vector3(88, 0.5, 104)
 
-[sub_resource type="BoxMesh" id="Mesh3"]
-material = SubResource("DarkConcrete")
-size = Vector3(10.6, 0.05, 11.2)
-
 [sub_resource type="BoxShape3D" id="Shape4"]
 size = Vector3(10.6, 0.05, 11.2)
-
-[sub_resource type="BoxMesh" id="Mesh5"]
-material = SubResource("Concrete")
-size = Vector3(10.5, 3.3, 0.32)
 
 [sub_resource type="BoxShape3D" id="Shape6"]
 size = Vector3(10.5, 3.3, 0.32)
 
-[sub_resource type="BoxMesh" id="Mesh7"]
-material = SubResource("Concrete")
-size = Vector3(0.32, 3.3, 10)
-
 [sub_resource type="BoxShape3D" id="Shape8"]
 size = Vector3(0.32, 3.3, 10)
-
-[sub_resource type="BoxMesh" id="Mesh9"]
-material = SubResource("DarkConcrete")
-size = Vector3(0.035, 0.57, 10)
-
-[sub_resource type="BoxMesh" id="Mesh10"]
-material = SubResource("Concrete")
-size = Vector3(3.65, 3.3, 0.32)
 
 [sub_resource type="BoxShape3D" id="Shape11"]
 size = Vector3(3.65, 3.3, 0.32)
 
-[sub_resource type="BoxMesh" id="Mesh12"]
-material = SubResource("DarkConcrete")
-size = Vector3(3.65, 0.58, 0.045)
-
-[sub_resource type="BoxMesh" id="Mesh13"]
-material = SubResource("Steel")
-size = Vector3(2.48, 1.25, 0.12)
-
-[sub_resource type="BoxMesh" id="Mesh14"]
-material = SubResource("Glass")
-size = Vector3(2.34, 1.11, 0.028)
-
-[sub_resource type="BoxMesh" id="Mesh15"]
-material = SubResource("Steel")
-size = Vector3(0.07, 1.16, 0.06)
-
-[sub_resource type="BoxMesh" id="Mesh16"]
-material = SubResource("Pale")
-size = Vector3(2.62, 0.11, 0.26)
-
-[sub_resource type="BoxMesh" id="Mesh17"]
-material = SubResource("Concrete")
-size = Vector3(2.78, 0.82, 0.32)
-
 [sub_resource type="BoxShape3D" id="Shape18"]
 size = Vector3(2.78, 0.82, 0.32)
 
-[sub_resource type="BoxMesh" id="Mesh19"]
-material = SubResource("Trim")
-size = Vector3(0.15, 2.45, 0.27)
-
-[sub_resource type="BoxMesh" id="Mesh20"]
-material = SubResource("Roof")
-size = Vector3(11, 0.27, 10.8)
-
 [sub_resource type="BoxShape3D" id="Shape21"]
 size = Vector3(11, 0.27, 10.8)
-
-[sub_resource type="BoxMesh" id="Mesh22"]
-material = SubResource("Trim")
-size = Vector3(11.13, 0.3, 0.18)
-
-[sub_resource type="BoxMesh" id="Mesh23"]
-material = SubResource("Steel")
-size = Vector3(2.42, 0.46, 0.1)
-
-[sub_resource type="BoxMesh" id="Mesh24"]
-material = SubResource("DarkConcrete")
-size = Vector3(1.5, 0.72, 1.05)
-
-[sub_resource type="BoxMesh" id="Mesh25"]
-material = SubResource("Steel")
-size = Vector3(0.13, 0.33, 0.035)
 
 [sub_resource type="CylinderMesh" id="Mesh26"]
 material = SubResource("Steel")
@@ -553,9 +470,7 @@ shape = SubResource("Shape2")
 [node name="Station" type="Node3D" parent="."]
 position = Vector3(0, 0, -12.5)
 
-[node name="Slab" type="MeshInstance3D" parent="Station"]
-position = Vector3(0, 0.025, 0)
-mesh = SubResource("Mesh3")
+[node name="Shell" parent="Station" instance=ExtResource("StationShell")]
 
 [node name="SlabBody" type="StaticBody3D" parent="Station"]
 position = Vector3(0, 0.025, 0)
@@ -563,19 +478,11 @@ position = Vector3(0, 0.025, 0)
 [node name="Collision" type="CollisionShape3D" parent="Station/SlabBody"]
 shape = SubResource("Shape4")
 
-[node name="BackWall" type="MeshInstance3D" parent="Station"]
-position = Vector3(0, 1.68, -5)
-mesh = SubResource("Mesh5")
-
 [node name="BackWallBody" type="StaticBody3D" parent="Station"]
 position = Vector3(0, 1.68, -5)
 
 [node name="Collision" type="CollisionShape3D" parent="Station/BackWallBody"]
 shape = SubResource("Shape6")
-
-[node name="WestWall" type="MeshInstance3D" parent="Station"]
-position = Vector3(-5, 1.68, 0)
-mesh = SubResource("Mesh7")
 
 [node name="WestWallBody" type="StaticBody3D" parent="Station"]
 position = Vector3(-5, 1.68, 0)
@@ -583,27 +490,11 @@ position = Vector3(-5, 1.68, 0)
 [node name="Collision" type="CollisionShape3D" parent="Station/WestWallBody"]
 shape = SubResource("Shape8")
 
-[node name="WestLowerTrim" type="MeshInstance3D" parent="Station"]
-position = Vector3(-5.16, 0.48, 0)
-mesh = SubResource("Mesh9")
-
-[node name="EastWall" type="MeshInstance3D" parent="Station"]
-position = Vector3(5, 1.68, 0)
-mesh = SubResource("Mesh7")
-
 [node name="EastWallBody" type="StaticBody3D" parent="Station"]
 position = Vector3(5, 1.68, 0)
 
 [node name="Collision" type="CollisionShape3D" parent="Station/EastWallBody"]
 shape = SubResource("Shape8")
-
-[node name="EastLowerTrim" type="MeshInstance3D" parent="Station"]
-position = Vector3(5.16, 0.48, 0)
-mesh = SubResource("Mesh9")
-
-[node name="LeftFront" type="MeshInstance3D" parent="Station"]
-position = Vector3(-3.2, 1.68, 5)
-mesh = SubResource("Mesh10")
 
 [node name="LeftFrontBody" type="StaticBody3D" parent="Station"]
 position = Vector3(-3.2, 1.68, 5)
@@ -611,59 +502,11 @@ position = Vector3(-3.2, 1.68, 5)
 [node name="Collision" type="CollisionShape3D" parent="Station/LeftFrontBody"]
 shape = SubResource("Shape11")
 
-[node name="LeftSkirt" type="MeshInstance3D" parent="Station"]
-position = Vector3(-3.2, 0.45, 5.18)
-mesh = SubResource("Mesh12")
-
-[node name="LeftWindowFrame" type="MeshInstance3D" parent="Station"]
-position = Vector3(-3.2, 1.82, 5.18)
-mesh = SubResource("Mesh13")
-
-[node name="LeftGlass" type="MeshInstance3D" parent="Station"]
-position = Vector3(-3.2, 1.82, 5.25)
-mesh = SubResource("Mesh14")
-
-[node name="LeftMullion" type="MeshInstance3D" parent="Station"]
-position = Vector3(-3.2, 1.82, 5.28)
-mesh = SubResource("Mesh15")
-
-[node name="LeftSill" type="MeshInstance3D" parent="Station"]
-position = Vector3(-3.2, 1.22, 5.33)
-mesh = SubResource("Mesh16")
-
-[node name="RightFront" type="MeshInstance3D" parent="Station"]
-position = Vector3(3.2, 1.68, 5)
-mesh = SubResource("Mesh10")
-
 [node name="RightFrontBody" type="StaticBody3D" parent="Station"]
 position = Vector3(3.2, 1.68, 5)
 
 [node name="Collision" type="CollisionShape3D" parent="Station/RightFrontBody"]
 shape = SubResource("Shape11")
-
-[node name="RightSkirt" type="MeshInstance3D" parent="Station"]
-position = Vector3(3.2, 0.45, 5.18)
-mesh = SubResource("Mesh12")
-
-[node name="RightWindowFrame" type="MeshInstance3D" parent="Station"]
-position = Vector3(3.2, 1.82, 5.18)
-mesh = SubResource("Mesh13")
-
-[node name="RightGlass" type="MeshInstance3D" parent="Station"]
-position = Vector3(3.2, 1.82, 5.25)
-mesh = SubResource("Mesh14")
-
-[node name="RightMullion" type="MeshInstance3D" parent="Station"]
-position = Vector3(3.2, 1.82, 5.28)
-mesh = SubResource("Mesh15")
-
-[node name="RightSill" type="MeshInstance3D" parent="Station"]
-position = Vector3(3.2, 1.22, 5.33)
-mesh = SubResource("Mesh16")
-
-[node name="Lintel" type="MeshInstance3D" parent="Station"]
-position = Vector3(0, 2.92, 5)
-mesh = SubResource("Mesh17")
 
 [node name="LintelBody" type="StaticBody3D" parent="Station"]
 position = Vector3(0, 2.92, 5)
@@ -671,20 +514,8 @@ position = Vector3(0, 2.92, 5)
 [node name="Collision" type="CollisionShape3D" parent="Station/LintelBody"]
 shape = SubResource("Shape18")
 
-[node name="LeftJamb" type="MeshInstance3D" parent="Station"]
-position = Vector3(-1.36, 1.28, 5.16)
-mesh = SubResource("Mesh19")
-
-[node name="RightJamb" type="MeshInstance3D" parent="Station"]
-position = Vector3(1.36, 1.28, 5.16)
-mesh = SubResource("Mesh19")
-
 [node name="Gate" parent="Station" instance=ExtResource("Gate")]
 position = Vector3(0, 0.05, 5)
-
-[node name="Roof" type="MeshInstance3D" parent="Station"]
-position = Vector3(0, 3.47, 0)
-mesh = SubResource("Mesh20")
 
 [node name="RoofBody" type="StaticBody3D" parent="Station"]
 position = Vector3(0, 3.47, 0)
@@ -692,46 +523,14 @@ position = Vector3(0, 3.47, 0)
 [node name="Collision" type="CollisionShape3D" parent="Station/RoofBody"]
 shape = SubResource("Shape21")
 
-[node name="Fascia" type="MeshInstance3D" parent="Station"]
-position = Vector3(0, 3.39, 5.42)
-mesh = SubResource("Mesh22")
-
-[node name="Nameplate" type="MeshInstance3D" parent="Station"]
-position = Vector3(0, 2.91, 5.2)
-mesh = SubResource("Mesh23")
-
 [node name="StationName" type="Label3D" parent="Station"]
-position = Vector3(0, 2.92, 5.268)
+position = Vector3(0, 2.993, 5.349)
 pixel_size = 0.0085
 font = ExtResource("Font")
 font_size = 46
 outline_size = 7
 text = "松岭气象站"
 
-
-[node name="VentHousing" type="MeshInstance3D" parent="Station"]
-position = Vector3(-2.7, 3.95, -2.9)
-mesh = SubResource("Mesh24")
-
-[node name="VentSlat0" type="MeshInstance3D" parent="Station"]
-position = Vector3(-3.18, 3.93, -2.36)
-mesh = SubResource("Mesh25")
-
-[node name="VentSlat1" type="MeshInstance3D" parent="Station"]
-position = Vector3(-2.94, 3.93, -2.36)
-mesh = SubResource("Mesh25")
-
-[node name="VentSlat2" type="MeshInstance3D" parent="Station"]
-position = Vector3(-2.7, 3.93, -2.36)
-mesh = SubResource("Mesh25")
-
-[node name="VentSlat3" type="MeshInstance3D" parent="Station"]
-position = Vector3(-2.46, 3.93, -2.36)
-mesh = SubResource("Mesh25")
-
-[node name="VentSlat4" type="MeshInstance3D" parent="Station"]
-position = Vector3(-2.22, 3.93, -2.36)
-mesh = SubResource("Mesh25")
 
 [node name="Mast" type="MeshInstance3D" parent="Station"]
 position = Vector3(2.7, 5.2, -1.8)
