@@ -3,7 +3,24 @@ extends Node3D
 ## Visual pose driver. The CharacterBody3D owns movement and collision.
 
 const PICKUP_TIME := 0.52
-const SWING_TIME := 0.28
+# Wind-up, impact and recovery use the same normalized clock as the hit.
+const SWING_PHASES := [0.0, 0.30, 0.56, 0.79, 1.0]
+const PICK_WRISTS: Array[Vector3] = [
+	Vector3(0.37, 0.93, 0.03), Vector3(0.37, 1.54, 0.11),
+	Vector3(0.31, 0.80, 0.44), Vector3(0.34, 0.76, 0.25), Vector3(0.37, 0.93, 0.03),
+]
+const PICK_ANGLES: Array[Vector3] = [
+	Vector3(-0.18, 0.0, -0.10), Vector3(-2.77, 0.08, 0.13),
+	Vector3(-1.19, -0.03, 0.05), Vector3(-0.53, -0.10, -0.13), Vector3(-0.18, 0.0, -0.10),
+]
+const SWORD_WRISTS: Array[Vector3] = [
+	Vector3(0.37, 0.93, 0.03), Vector3(0.59, 1.35, -0.17),
+	Vector3(0.16, 1.10, 0.49), Vector3(-0.25, 0.99, 0.35), Vector3(0.37, 0.93, 0.03),
+]
+const SWORD_ANGLES: Array[Vector3] = [
+	Vector3(-0.18, 0.0, -0.10), Vector3(-1.98, 0.94, 1.18),
+	Vector3(-1.41, -0.30, 0.42), Vector3(-1.08, -1.14, -0.56), Vector3(-0.18, 0.0, -0.10),
+]
 const WALK_SPEED := 4.1
 const RUN_SPEED := 6.6
 
@@ -34,6 +51,7 @@ var _gait := 0.0
 var _elapsed := 0.0
 var _reach_left := 0.0
 var _grip := Vector3.ZERO
+var tool_basis := Basis.IDENTITY
 
 
 func _ready() -> void:
@@ -46,7 +64,7 @@ func _ready() -> void:
 	for side in ["L", "R"]:
 		_legs.append(_limb("Thigh" + side, "Shin" + side, "Foot" + side))
 		_arms.append(_limb("Arm" + side, "Forearm" + side, "Hand" + side))
-	update_pose(0.0, 0.0, true, 0.0)
+	update_pose(0.0, 0.0, true)
 
 
 func pick_up() -> void:
@@ -57,11 +75,18 @@ func grip_position() -> Vector3:
 	return to_local(_rig.to_global(_grip))
 
 
-func update_pose(delta: float, speed: float, grounded: bool, swing_left: float) -> void:
+func update_pose(delta: float, speed: float, grounded: bool, tool := -1, progress := 0.0) -> void:
 	_elapsed += delta
 	_reach_left = maxf(0.0, _reach_left - delta)
 	var reach := sin(PI * _reach_left / PICKUP_TIME) * (1.0 - minf(speed / 10.0, 0.55))
-	var striking := sin(PI * swing_left / SWING_TIME)
+	var wielding := tool >= 0
+	var sword_swing := tool == SupplyRules.Tool.STONE_SWORD
+	var effort := sin(progress * PI) if wielding else 0.0
+	if wielding:
+		reach = 0.0
+		_reach_left = 0.0
+	var body_twist := (_sample(progress, SWORD_ANGLES).y * 0.32) if sword_swing else effort * 0.07
+	tool_basis = Basis.from_euler(_sample(progress, SWORD_ANGLES if sword_swing else PICK_ANGLES))
 	var running := smoothstep(WALK_SPEED, RUN_SPEED, speed)
 	_gait = move_toward(_gait, clampf(speed / WALK_SPEED, 0.0, 1.0), delta * 6.5)
 	var stride := lerpf(0.80, 1.02, running)
@@ -85,7 +110,7 @@ func update_pose(delta: float, speed: float, grounded: bool, swing_left: float) 
 	var lean := lerpf(0.025, 0.20, running) + 0.023 * _gait + 0.68 * reach
 	var roll := cos(_cycle * TAU) * _gait * lerpf(0.026, 0.046, running)
 	var breathing := sin(_elapsed * 2.4) * 0.009 * (1.0 - _gait)
-	var upper_body := Basis(Vector3.RIGHT, lean + breathing) * Basis(Vector3.BACK, roll)
+	var upper_body := Basis(Vector3.UP, body_twist) * Basis(Vector3.RIGHT, lean + breathing + effort * 0.14) * Basis(Vector3.BACK, roll)
 	var torso := Transform3D(upper_body, _rest[_chest].origin + hips - upper_body * _rest[_chest].origin)
 	_rig.set_bone_global_pose(_chest, torso * _rest[_chest])
 	var head := torso * _rest[_head]
@@ -94,8 +119,8 @@ func update_pose(delta: float, speed: float, grounded: bool, swing_left: float) 
 
 	_pose_leg(_legs[0], ankle_l, step_l.z, hips)
 	_pose_leg(_legs[1], ankle_r, step_r.z, hips)
-	_pose_arm(_arms[0], torso, -1.0, step_l.x, running, reach, 0.0)
-	_pose_arm(_arms[1], torso, 1.0, step_r.x, running, 0.0, striking)
+	_pose_arm(_arms[0], torso, -1.0, step_l.x, running, reach, tool, progress)
+	_pose_arm(_arms[1], torso, 1.0, step_r.x, running, 0.0, tool, progress)
 
 
 func _limb(upper: String, lower: String, end: String) -> Limb:
@@ -131,18 +156,32 @@ func _pose_leg(leg: Limb, ankle: Vector3, pitch: float, pelvis: Vector3) -> void
 
 
 func _pose_arm(arm: Limb, torso: Transform3D, side: float, step: float,
-		running: float, reach: float, strike: float) -> void:
+		running: float, reach: float, tool: int, progress: float) -> void:
 	var wrist := torso * _rest[arm.end].origin
 	wrist.x += side * (0.019 + 0.022 * _gait)
 	wrist.y += _gait * (0.018 + 0.07 * running) + absf(step) * 0.22
 	wrist.z -= step * lerpf(0.53, 0.68, running)
 	wrist = wrist.lerp(Vector3(-0.274, 0.45, 0.54), reach)
-	wrist = wrist.lerp(Vector3(0.33, 1.13, 0.51), strike)
+	if tool >= 0:
+		var weight := smoothstep(0.0, 0.18, progress) * (1.0 - smoothstep(0.83, 1.0, progress))
+		if side > 0.0:
+			var keys := SWORD_WRISTS if tool == SupplyRules.Tool.STONE_SWORD else PICK_WRISTS
+			wrist = wrist.lerp(_sample(progress, keys), weight)
+		elif tool != SupplyRules.Tool.STONE_SWORD:
+			wrist = wrist.lerp(Vector3(-0.22, 1.10, 0.27), weight * 0.58)
 	_solve_limb(arm, torso, wrist, Vector3(side * 0.29, -0.10, -0.95))
 	if side > 0.0:
 		var hand := _rig.get_bone_global_pose(arm.end)
 		var grip_offset := _rest[arm.end].basis.inverse() * Vector3(-0.008, -0.052, 0.018)
 		_grip = hand * grip_offset
+
+
+func _sample(progress: float, keys: Array[Vector3]) -> Vector3:
+	for i in range(1, SWING_PHASES.size()):
+		if progress <= SWING_PHASES[i]:
+			var weight := smoothstep(SWING_PHASES[i - 1], SWING_PHASES[i], progress)
+			return keys[i - 1].lerp(keys[i], weight)
+	return keys.back()
 
 
 func _solve_limb(limb: Limb, parent_delta: Transform3D, target: Vector3, pole: Vector3) -> void:

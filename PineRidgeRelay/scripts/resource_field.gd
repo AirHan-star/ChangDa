@@ -7,6 +7,7 @@ const MAX_DAILY_WOOD := 22
 const MAX_DAILY_ORE := 8
 const WOOD_DELAY := 15.0
 const ORE_DELAY := 21.0
+const ORE_CLEARANCE := Vector3(1.65, 0.94, 1.27)
 
 class Slot:
 	var occupant: Node3D
@@ -24,12 +25,14 @@ var _ore_total := 0
 var _supplies: Node3D
 var _ores: Node3D
 var _rules: SupplyRules
+var _ore_clearance := BoxShape3D.new()
 
 
 func _init(supplies: Node3D, ores: Node3D, rules: SupplyRules) -> void:
 	_supplies = supplies
 	_ores = ores
 	_rules = rules
+	_ore_clearance.size = ORE_CLEARANCE
 	for child in supplies.get_children():
 		var pickup := child as SupplyPickup
 		assert(pickup != null)
@@ -58,7 +61,7 @@ func tick(delta: float) -> void:
 	for slot in _ore:
 		if _ore_total >= MAX_DAILY_ORE:
 			break
-		if _ready_to_refill(slot, delta):
+		if _ready_to_refill(slot, delta) and _ore_spawn_clear(slot.location):
 			_ore_total += 1
 			_place(ORE_SCENE.instantiate() as Node3D, slot, _ores)
 
@@ -76,8 +79,16 @@ func remove(resource: Node3D) -> void:
 func _ready_to_refill(slot: Slot, delta: float) -> bool:
 	if is_instance_valid(slot.occupant):
 		return false
-	slot.cooldown -= delta
+	slot.cooldown = maxf(0.0, slot.cooldown - delta)
 	return slot.cooldown <= 0.0
+
+
+func _ore_spawn_clear(location: Vector3) -> bool:
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = _ore_clearance
+	query.transform.origin = _ores.to_global(location + Vector3.UP * ORE_CLEARANCE.y * 0.46)
+	query.collision_mask = 6 # Player and infected.
+	return _ores.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
 func _place(resource: Node3D, slot: Slot, parent: Node3D) -> void:

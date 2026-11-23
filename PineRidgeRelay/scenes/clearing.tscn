@@ -1,4 +1,4 @@
-[gd_scene load_steps=33 format=3]
+[gd_scene load_steps=34 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/station/station_shell.glb" id="StationShell"]
 
@@ -23,6 +23,8 @@
 [ext_resource type="PackedScene" path="res://assets/world/supply_crate.glb" id="Crate"]
 
 [ext_resource type="PackedScene" path="res://assets/world/ration_tin.glb" id="Tin"]
+
+[ext_resource type="PackedScene" path="res://assets/world/perimeter.glb" id="Perimeter"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyPaint"]
 sky_top_color = Color(0.20, 0.34, 0.40, 1)
@@ -1287,6 +1289,8 @@ position = Vector3(0, 1.16, 0)
 
 [node name="Collision" type="CollisionShape3D" parent="Woods/Pine147/TrunkBody"]
 shape = SubResource("Shape69")
+
+[node name="MetalPerimeter" parent="." instance=ExtResource("Perimeter")]
 
 [node name="WestBoundary" type="StaticBody3D" parent="."]
 position = Vector3(-34, 2, 9)

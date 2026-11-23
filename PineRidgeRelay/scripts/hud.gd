@@ -8,17 +8,15 @@ const MINT := Color("#a6e0b8")
 const NIGHT_BLUE := Color("#a6c9fa")
 const WARNING := Color("#f39282")
 
-@onready var mission: Label = $Screen/Brief/Content/Mission
-@onready var route: Label = $Screen/Brief/Content/Route
-@onready var inventory: Label = $Screen/Inventory/Content/Carried
-@onready var deposited: Label = $Screen/Inventory/Content/Stored
+@onready var mission: Label = $Screen/Brief/Mission
+@onready var route: Label = $Screen/Brief/Route
 @onready var prompt_panel: PanelContainer = $Screen/Prompt
 @onready var prompt_label: Label = $Screen/Prompt/Text
 @onready var phase_label: Label = $Screen/Survival/Content/Phase
 @onready var health_label: Label = $Screen/Survival/Content/Gate
 @onready var health_bar: ProgressBar = $Screen/Survival/Content/Health
 @onready var raid_label: Label = $Screen/Survival/Content/Raid
-@onready var recipes: VBoxContainer = $Screen/Crafting/Content
+@onready var gear: GearPanels = $Screen/Gear
 @onready var toast: Label = $Screen/Toast
 @onready var result: ColorRect = $Screen/Result
 @onready var result_title: Label = $Screen/Result/Card/Content/Title
@@ -38,32 +36,24 @@ func _process(delta: float) -> void:
 			toast.hide()
 
 
-func show_supplies(rules: SupplyRules) -> void:
+func show_supplies(rules: SupplyRules, equipped_tool: int) -> void:
 	var wood := rules.carried(SupplyRules.Kind.WOOD)
 	var cans := rules.carried(SupplyRules.Kind.CAN)
-	var stone := rules.carried(SupplyRules.Kind.STONE)
 	var stored_wood := rules.stored(SupplyRules.Kind.WOOD)
 	var stored_cans := rules.stored(SupplyRules.Kind.CAN)
-	inventory.text = "木料 %d    石头 %d    罐头 %d" % [wood, stone, cans]
-	deposited.text = "已存入   木料 %d / %d     罐头 %d / %d" % [
-		stored_wood, SupplyRules.WOOD_TARGET, stored_cans, SupplyRules.CAN_TARGET
-	]
 	if rules.is_complete():
 		mission.text = "补给任务完成"
 		mission.add_theme_color_override(&"font_color", MINT)
-		route.text = "物资已存入气象站的补给箱。"
 	elif wood + stored_wood >= SupplyRules.WOOD_TARGET and cans + stored_cans >= SupplyRules.CAN_TARGET:
-		mission.text = "返回气象站"
+		mission.text = "返回气象站交付"
 		mission.add_theme_color_override(&"font_color", ACCENT)
-		route.text = "交付会存入随身的全部木料和罐头。"
 	else:
-		mission.text = "收集并交回补给"
+		mission.text = "收集补给"
 		mission.add_theme_color_override(&"font_color", ACCENT)
-		route.text = "沿林间小路找金色木料和青色罐头。"
-
-	_recipe(recipes.get_node("WoodPick"), rules.has_tool(SupplyRules.Tool.WOOD_PICK), "1  木镐     木料 2")
-	_recipe(recipes.get_node("StonePick"), rules.has_tool(SupplyRules.Tool.STONE_PICK), "2  石镐     木料 2  石头 2")
-	_recipe(recipes.get_node("StoneSword"), rules.has_tool(SupplyRules.Tool.STONE_SWORD), "3  石剑     木料 1  石头 2")
+	route.text = "已交付  木料 %d/%d  ·  罐头 %d/%d" % [
+		stored_wood, SupplyRules.WOOD_TARGET, stored_cans, SupplyRules.CAN_TARGET
+	]
+	gear.refresh(rules, equipped_tool)
 
 
 func show_survival(state: SurvivalRules, spawned: int, active: int) -> void:
@@ -111,8 +101,3 @@ func show_result(won: bool, health: int, delivered: bool) -> void:
 	result_detail.text = "剩余门耐久 %d  ·  %s" % [health, delivery]
 	result.show()
 	$Screen/Result/Card/Content/Restart.grab_focus()
-
-
-func _recipe(label: Label, owned: bool, description: String) -> void:
-	label.text = description + ("  ✓" if owned else "")
-	label.add_theme_color_override(&"font_color", MINT if owned else Color("#e1e8dd"))

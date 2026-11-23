@@ -57,13 +57,19 @@ func deposit() -> bool:
 	return true
 
 
-func craft(tool: Tool) -> bool:
+func can_craft(tool: Tool) -> bool:
 	if has_tool(tool) or not RECIPES.has(tool):
 		return false
-	var recipe: Dictionary = RECIPES[tool]
-	for kind in recipe:
-		if _inventory[kind] < recipe[kind]:
+	for kind in RECIPES[tool]:
+		if carried(kind) < RECIPES[tool][kind]:
 			return false
+	return true
+
+
+func craft(tool: Tool) -> bool:
+	if not can_craft(tool):
+		return false
+	var recipe: Dictionary = RECIPES[tool]
 	for kind in recipe:
 		_inventory[kind] -= recipe[kind]
 	_tools[tool] = true
@@ -83,10 +89,17 @@ func has_tool(tool: Tool) -> bool:
 	return _tools.has(tool)
 
 
-func mining_power() -> int:
-	if has_tool(Tool.STONE_PICK):
-		return 3
-	return 1 if has_tool(Tool.WOOD_PICK) else 0
+func mining_power(tool := -1) -> int:
+	if tool < 0:
+		tool = Tool.STONE_PICK if has_tool(Tool.STONE_PICK) else Tool.WOOD_PICK
+	if not has_tool(tool):
+		return 0
+	match tool:
+		Tool.STONE_PICK:
+			return 3
+		Tool.WOOD_PICK:
+			return 1
+	return 0
 
 
 func carried(kind: Kind) -> int:

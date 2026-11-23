@@ -1,6 +1,7 @@
 extends Node3D
 
 const PICKUP_RANGE := 2.15
+const MINE_RANGE := 1.72
 const CHEST_RANGE := 2.55
 const DOOR_RANGE := 2.85
 const SWING_COOLDOWN := 0.51
@@ -9,12 +10,6 @@ const RECIPES := {
 	&"craft_stone_pick": SupplyRules.Tool.STONE_PICK,
 	&"craft_stone_sword": SupplyRules.Tool.STONE_SWORD,
 }
-const TOOL_NAMES := {
-	SupplyRules.Tool.WOOD_PICK: "木镐",
-	SupplyRules.Tool.STONE_PICK: "石镐",
-	SupplyRules.Tool.STONE_SWORD: "石剑",
-}
-
 @onready var player: RelayPlayer = $Player
 @onready var supplies: Node3D = $Clearing/Supplies
 @onready var ores: Node3D = $Clearing/Ores
@@ -30,6 +25,8 @@ var raid: NightRaid
 var _requested: Array[StringName] = []
 var _swing_in := 0.0
 var _restarting := false
+var _mining_target: MineableOre
+var _mouse_before_panel := Input.MOUSE_MODE_CAPTURED
 
 
 func _ready() -> void:
@@ -38,6 +35,10 @@ func _ready() -> void:
 	rules.changed.connect(_refresh_inventory)
 	survival.phase_changed.connect(_phase_changed)
 	hud.restart_requested.connect(_restart)
+	hud.gear.panel_requested.connect(_toggle_panel)
+	hud.gear.craft_requested.connect(_craft)
+	hud.gear.equip_requested.connect(_equip)
+	player.tool_impact.connect(_on_tool_impact)
 	_refresh_inventory()
 	_refresh_survival()
 
@@ -58,6 +59,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_swing_in = maxf(0.0, _swing_in - delta)
+	if player.panel_open:
+		_requested.clear()
+		hud.set_prompt("")
+		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		_requested.clear()
 		hud.set_prompt("鼠标已释放 · 单击画面继续")
@@ -69,7 +74,7 @@ func _physics_process(delta: float) -> void:
 		elif action == &"reinforce":
 			_reinforce()
 		elif action == &"attack":
-			_attack()
+			_attack(target)
 		elif RECIPES.has(action):
 			_craft(RECIPES[action])
 	_requested.clear()
@@ -78,12 +83,45 @@ func _physics_process(delta: float) -> void:
 	hud.set_prompt(_prompt(target))
 
 
+func _input(event: InputEvent) -> void:
+	if survival.is_over():
+		return
+	if event.is_action_pressed(&"open_crafting"):
+		_toggle_panel(GearPanels.PanelKind.CRAFT)
+	elif event.is_action_pressed(&"open_backpack"):
+		_toggle_panel(GearPanels.PanelKind.BAG)
+	elif player.panel_open and event.is_action_pressed(&"release_mouse"):
+		_toggle_panel(GearPanels.PanelKind.NONE)
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
+func _toggle_panel(panel: int) -> void:
+	if survival.is_over():
+		return
+	if panel == hud.gear.active_panel:
+		panel = GearPanels.PanelKind.NONE
+	if panel == GearPanels.PanelKind.NONE:
+		if player.panel_open:
+			Input.mouse_mode = _mouse_before_panel
+		player.panel_open = false
+	else:
+		if not player.panel_open:
+			_mouse_before_panel = Input.mouse_mode
+		player.panel_open = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_requested.clear()
+	hud.set_prompt("")
+	hud.gear.show_panel(panel)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if survival.is_over():
 		if event.is_action_pressed(&"restart"):
 			_restart()
 		return
-	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	if player.panel_open or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
 	for action in [&"interact", &"reinforce", &"attack",
 			&"craft_wood_pick", &"craft_stone_pick", &"craft_stone_sword"]:
@@ -101,13 +139,12 @@ func _interact(target: Node3D) -> void:
 			player.play_pickup(target.global_position)
 			field.remove(target)
 	elif target is MineableOre:
-		var power := rules.mining_power()
-		if power == 0:
-			hud.notify("先按 1 制作木镐，再开采")
-		elif target.strike(power):
-			rules.add_stone(MineableOre.YIELD)
-			field.remove(target)
-			hud.notify("石头 +%d" % MineableOre.YIELD)
+		var tool := _mining_tool()
+		if tool < 0:
+			hud.notify("按 Tab 合成木镐，再开采")
+		else:
+			if _begin_mine(target, tool) and player.equipped != tool:
+				_equip(tool)
 
 
 func _reinforce() -> void:
@@ -125,23 +162,68 @@ func _reinforce() -> void:
 
 func _craft(tool: SupplyRules.Tool) -> void:
 	if rules.has_tool(tool):
-		hud.notify("已持有%s" % TOOL_NAMES[tool])
+		_equip(tool)
 	elif rules.craft(tool):
-		hud.notify("已制作%s" % TOOL_NAMES[tool])
+		_equip(tool)
+		hud.notify("已制作%s" % GearPanels.TOOL_NAMES[tool])
 	else:
-		hud.notify("制作%s的材料不足" % TOOL_NAMES[tool])
+		hud.notify("制作%s的材料不足" % GearPanels.TOOL_NAMES[tool])
 
 
-func _attack() -> void:
-	if not rules.has_tool(SupplyRules.Tool.STONE_SWORD) or _swing_in > 0.0:
+func _equip(tool: SupplyRules.Tool) -> void:
+	if rules.has_tool(tool):
+		player.equip(tool)
+		_refresh_inventory()
+
+
+func _mining_tool() -> int:
+	if player.equipped >= 0 and rules.mining_power(player.equipped) > 0:
+		return player.equipped
+	if rules.has_tool(SupplyRules.Tool.STONE_PICK):
+		return SupplyRules.Tool.STONE_PICK
+	return SupplyRules.Tool.WOOD_PICK if rules.has_tool(SupplyRules.Tool.WOOD_PICK) else -1
+
+
+func _begin_mine(ore: MineableOre, tool: int) -> bool:
+	var direction := ore.global_position - player.global_position
+	direction.y = 0.0
+	if not player.start_swing(tool, direction.normalized()):
+		return false
+	_mining_target = ore
+	return true
+
+
+func _attack(target: Node3D) -> void:
+	var tool := player.equipped
+	if tool < 0 or _swing_in > 0.0:
 		return
-	_swing_in = SWING_COOLDOWN
-	var facing := -player.orbit.global_basis.z
-	player.swing_sword(facing)
-	if survival.phase == SurvivalRules.Phase.NIGHT:
-		var origin := player.global_position + Vector3.UP * 0.95
-		if raid.strike(origin, facing, player.get_rid()):
-			hud.notify("击中感染者", 0.65)
+	if tool != SupplyRules.Tool.STONE_SWORD and target is MineableOre:
+		_begin_mine(target, tool)
+	elif player.start_swing(tool, -player.orbit.global_basis.z):
+		_mining_target = null
+		if tool == SupplyRules.Tool.STONE_SWORD:
+			_swing_in = SWING_COOLDOWN
+
+
+func _on_tool_impact(tool: int, facing: Vector3) -> void:
+	if survival.is_over():
+		return
+	if tool == SupplyRules.Tool.STONE_SWORD:
+		if survival.phase == SurvivalRules.Phase.NIGHT:
+			var origin := player.global_position + Vector3.UP * 0.95
+			if raid.strike(origin, facing, player.get_rid()):
+				hud.notify("击中感染者", 0.65)
+		return
+	var ore := _mining_target
+	_mining_target = null
+	if not is_instance_valid(ore) or ore.is_queued_for_deletion():
+		return
+	if not _within_reach(ore.global_position + Vector3.UP * 0.45, MINE_RANGE, ore):
+		return
+	if ore.strike(rules.mining_power(tool)):
+		rules.add_stone(MineableOre.YIELD)
+		field.remove(ore)
+		hud.notify("石头 +%d" % MineableOre.YIELD)
 
 
 func _prompt(target: Node3D) -> String:
@@ -150,9 +232,10 @@ func _prompt(target: Node3D) -> String:
 	if target is SupplyPickup:
 		return "按 E 拾取"
 	if target is MineableOre:
-		var power := rules.mining_power()
-		if power == 0:
-			return "石矿 · 按 1 制作木镐"
+		var tool := _mining_tool()
+		if tool < 0:
+			return "石矿 · 按 Tab 合成木镐"
+		var power := rules.mining_power(tool)
 		var hits := ceili(float(target.hardness) / power)
 		return "按 E 开采 · 还需 %d 次" % hits
 	if not _near_gate():
@@ -176,18 +259,21 @@ func _interaction_target() -> Node3D:
 			if resource.is_queued_for_deletion():
 				continue
 			var distance := player.global_position.distance_squared_to(resource.global_position)
-			if distance < best_distance and _within_reach(resource.global_position + Vector3.UP * 0.45, PICKUP_RANGE):
+			var ore := resource as MineableOre
+			var reach := MINE_RANGE if ore != null else PICKUP_RANGE
+			if distance < best_distance and _within_reach(resource.global_position + Vector3.UP * 0.45, reach, ore):
 				nearest = resource
 				best_distance = distance
 	return nearest
 
 
-func _within_reach(point: Vector3, reach: float) -> bool:
+func _within_reach(point: Vector3, reach: float, resource: StaticBody3D = null) -> bool:
 	var from := player.global_position + Vector3.UP * 0.85
 	if from.distance_squared_to(point) > reach * reach:
 		return false
-	var query := PhysicsRayQueryParameters3D.create(from, point, 1, [player.get_rid()])
-	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+	var query := PhysicsRayQueryParameters3D.create(from, point, 9, [player.get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	return hit.is_empty() or (resource != null and hit.get("collider") == resource)
 
 
 func _near_gate() -> bool:
@@ -205,6 +291,8 @@ func _phase_changed() -> void:
 	elif survival.is_over():
 		if survival.phase == SurvivalRules.Phase.LOST:
 			gate.break_gate()
+		hud.gear.show_panel(GearPanels.PanelKind.NONE)
+		player.panel_open = false
 		player.set_physics_process(false)
 		player.set_process_unhandled_input(false)
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -219,8 +307,7 @@ func _restart() -> void:
 
 
 func _refresh_inventory() -> void:
-	player.sword.visible = rules.has_tool(SupplyRules.Tool.STONE_SWORD)
-	hud.show_supplies(rules)
+	hud.show_supplies(rules, player.equipped)
 
 
 func _refresh_survival() -> void:
