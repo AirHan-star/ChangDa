@@ -22,6 +22,14 @@ var tree_deadlines: Dictionary = {}
 var cleared_nests: Dictionary = {}
 var magazine := RelayMagazine.new()
 var road: RoadRun
+var finale: PumpFight
+var _finale_return: Dictionary
+var _finale_exit_prompt := false
+var _finale_last_health := 100
+var _dialogue_site: RelaySite
+var _dialogue_lines: Array
+var _dialogue_page := 0
+var _dialogue_stage := -1
 var _crate_seed := 0
 var _road_return: Dictionary
 var _road_exit_prompt := false
@@ -50,8 +58,9 @@ func _ready() -> void:
 	hud.gear.ration_requested.connect(_eat)
 	hud.gear.travel_requested.connect(_travel)
 	hud.gear.upgrade_requested.connect(_road_upgrade)
-	hud.gear.road_leave_requested.connect(_leave_road)
-	hud.gear.road_resume_requested.connect(_resume_road)
+	hud.gear.road_leave_requested.connect(_leave_encounter)
+	hud.gear.road_resume_requested.connect(_resume_encounter)
+	hud.gear.dialogue_next_requested.connect(_next_dialogue)
 	player.tool_impact.connect(_tool_contact)
 	player.survivor.foot_planted.connect(func(point: Vector3, heavy: bool):
 		audio.play_at(RelayAudio.Cue.FOOTSTEP, point, 1.0 if heavy else -3.0))
@@ -121,6 +130,8 @@ func _restore(saved: Dictionary) -> void:
 func _save(manual := false) -> void:
 	if _restoring or road != null or not is_instance_valid(region):
 		return
+	if finale != null and finale.outcome != PumpFight.Outcome.WON:
+		return
 	_save_in = 20.0
 	var data := {
 		"version": 1, "map": _map_id, "stage": story.stage,
@@ -132,6 +143,11 @@ func _save(manual := false) -> void:
 		"opened": opened, "depleted": depleted, "cleared": cleared_nests, "trees": tree_deadlines,
 		"crate_seed": _crate_seed, "magazine": magazine.rounds,
 	}
+	if finale != null:
+		data.map = _finale_return["map"]
+		data.position = _finale_return["point"]
+		data.facing = _finale_return["facing"]
+		data.equipped = _finale_return["tool"]
 	if not RelaySave.store(data):
 		hud.notify("无法写入存档")
 	elif manual:
@@ -172,7 +188,10 @@ func _physics_process(delta: float) -> void:
 	if road != null:
 		_tick_road(delta)
 		return
-	if survival.player_health == 0:
+	if finale != null:
+		_tick_finale(delta)
+		return
+	if survival.player_health == 0 or hud.gear.active_panel == GearPanels.PanelKind.DIALOGUE:
 		return
 	survival.tick(delta)
 	var daylight := survival.phase == SurvivalRules.Phase.DAY
@@ -228,6 +247,18 @@ func _input(event: InputEvent) -> void:
 	if road != null:
 		_road_input(event)
 		return
+	if finale != null:
+		_finale_input(event)
+		return
+	if hud.gear.active_panel == GearPanels.PanelKind.DIALOGUE:
+		if event.is_action_pressed(&"interact"):
+			_next_dialogue()
+		elif event.is_action_pressed(&"release_mouse"):
+			_set_panel(GearPanels.PanelKind.NONE)
+		else:
+			return
+		get_viewport().set_input_as_handled()
+		return
 	if survival.player_health == 0:
 		return
 	if event.is_action_pressed(&"open_crafting"):
@@ -272,7 +303,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _request_panel(panel: int) -> void:
-	if road != null:
+	if road != null or finale != null:
 		return
 	if panel == hud.gear.active_panel:
 		_set_panel(GearPanels.PanelKind.NONE)
@@ -290,6 +321,8 @@ func _request_panel(panel: int) -> void:
 
 func _set_panel(panel: int) -> void:
 	_trigger_held = false
+	if panel != GearPanels.PanelKind.DIALOGUE:
+		_dialogue_site = null
 	if panel == GearPanels.PanelKind.NONE:
 		if player.panel_open:
 			Input.mouse_mode = _mouse_before_panel
@@ -307,7 +340,8 @@ func _set_panel(panel: int) -> void:
 
 
 func _near_portal() -> bool:
-	return player.global_position.distance_squared_to(region.portal.global_position) < PORTAL_RANGE ** 2
+	return is_instance_valid(region.portal) and (
+		player.global_position.distance_squared_to(region.portal.global_position) < PORTAL_RANGE ** 2)
 
 
 func _travel(map_id: int) -> void:
@@ -325,8 +359,7 @@ func _travel(map_id: int) -> void:
 
 
 func _enter_road() -> void:
-	_road_return = {"map":_map_id,"point":player.global_position,"tool":player.equipped,
-		"facing":player.orbit.rotation.y,"pitch":player.arm.rotation.x}
+	_road_return = _encounter_origin()
 	_save()
 	_set_panel(GearPanels.PanelKind.NONE)
 	_load_region(RelayStory.ROAD_MAP,Vector3.INF,true)
@@ -424,16 +457,7 @@ func _leave_road() -> void:
 	road.dispose()
 	road = null
 	_road_exit_prompt = false
-	_set_panel(GearPanels.PanelKind.NONE)
-	_load_region(_road_return["map"],_road_return["point"])
-	player.orbit.rotation.y = _road_return["facing"]
-	player.arm.rotation.x = _road_return["pitch"]
-	player.model.rotation.y = player.orbit.rotation.y + PI
-	player.equip(_road_return["tool"])
-	hud.road_mode(false)
-	_health_changed()
-	_refresh_bag()
-	_save()
+	_restore_encounter_origin(_road_return)
 	hud.notify("已返回生存地图")
 
 
@@ -447,12 +471,186 @@ func _road_health_changed() -> void:
 	hud.show_player_health(points)
 
 
+func _encounter_origin() -> Dictionary:
+	return {"map": _map_id, "point": player.global_position, "tool": player.equipped,
+		"facing": player.orbit.rotation.y, "pitch": player.arm.rotation.x}
+
+
+func _restore_encounter_origin(origin: Dictionary) -> void:
+	_set_panel(GearPanels.PanelKind.NONE)
+	_load_region(origin["map"], origin["point"])
+	player.orbit.rotation.y = origin["facing"]
+	player.arm.rotation.x = origin["pitch"]
+	player.model.rotation.y = player.orbit.rotation.y + PI
+	player.equip(origin["tool"])
+	hud.road_mode(false)
+	_health_changed()
+	_refresh_bag()
+	_save()
+
+
+func _leave_encounter() -> void:
+	if finale == null:
+		_leave_road()
+		return
+	if hud.gear.active_panel != GearPanels.PanelKind.ROAD:
+		return
+	var won := finale.outcome == PumpFight.Outcome.WON
+	finale.vitals.player_health_changed.disconnect(_finale_health_changed)
+	finale.dispose()
+	finale = null
+	_finale_exit_prompt = false
+	_restore_encounter_origin(_finale_return)
+	hud.notify("公共频段恢复 · 主线完成" if won else "已返回池照身边，可再次尝试")
+
+
+func _resume_encounter() -> void:
+	if finale == null:
+		_resume_road()
+	elif finale.outcome == PumpFight.Outcome.ACTIVE:
+		_finale_exit_prompt = false
+		_set_panel(GearPanels.PanelKind.NONE)
+
+
+func _enter_finale() -> void:
+	_finale_return = _encounter_origin()
+	_save()
+	_set_panel(GearPanels.PanelKind.NONE)
+	_load_region(RelayStory.FINALE_MAP, Vector3.INF, true)
+	finale = PumpFight.new(region, player, raid)
+	finale.vitals.player_health_changed.connect(_finale_health_changed)
+	_finale_exit_prompt = false
+	_finale_last_health = SurvivalRules.PLAYER_MAX_HEALTH
+	player.orbit.rotation.y = PI
+	player.arm.rotation.x = 0.0
+	player.model.rotation.y = 0.0
+	player.equip(SupplyRules.Tool.CARBINE)
+	hud.road_mode(true)
+	hud.finale_controls()
+	hud.show_player_health(finale.vitals.player_health)
+	hud.show_finale(finale)
+	hud.aim.show()
+	_refresh_magazine()
+
+
+func _finale_health_changed() -> void:
+	var points := finale.vitals.player_health
+	if points < _finale_last_health:
+		player.survivor.flinch()
+		hud.flash_damage()
+		audio.play_damage()
+	_finale_last_health = points
+	hud.show_player_health(points)
+
+
+func _finale_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"release_mouse") and finale.outcome == PumpFight.Outcome.ACTIVE:
+		if _finale_exit_prompt:
+			_resume_encounter()
+		else:
+			_finale_exit_prompt = true
+			_sync_finale_dialog()
+	elif event.is_action_pressed(&"reload") and not player.panel_open:
+		_reload()
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
+func _tick_finale(delta: float) -> void:
+	if player.panel_open:
+		return
+	finale.tick(delta)
+	if player.global_position.y < -4.0:
+		player.relocate(region.shelter)
+	hud.show_finale(finale)
+	_refresh_magazine()
+	_sync_finale_dialog()
+	if player.panel_open:
+		_input_queue.clear()
+		return
+	var control := _near_target() as RelaySite
+	if _input_queue.has(&"interact") and is_instance_valid(control):
+		if finale.vent(control):
+			audio.play_at(RelayAudio.Cue.ROCK, control.global_position)
+			hud.notify("稳压器停机 · 趁现在攻击")
+	if _input_queue.has(&"attack"):
+		_fire()
+	_input_queue.clear()
+	_repeat_fire()
+	_sync_finale_dialog()
+	if not player.panel_open:
+		hud.set_prompt(_prompt(control))
+
+
+func _sync_finale_dialog() -> void:
+	if finale.outcome == PumpFight.Outcome.WON:
+		story.complete_finale()
+		_save()
+		_set_panel(GearPanels.PanelKind.ROAD)
+		hud.gear.road_dialog("北压泵房 · 报警解除",
+			"沈苇的呼叫传到了公共频段。撤离名单上的八个人回了话。", [], false, "返回黄烟盆地")
+	elif finale.outcome == PumpFight.Outcome.LOST:
+		_set_panel(GearPanels.PanelKind.ROAD)
+		hud.gear.road_dialog("北压泵房 · 失去联络",
+			"池照会在检修线入口等你。回去休整后，可以向她申请再次出发。", [], false, "返回池照身边")
+	elif _finale_exit_prompt:
+		_set_panel(GearPanels.PanelKind.ROAD)
+		hud.gear.road_dialog("撤离北压泵房", "确认后回到池照身边，本次战斗结束。", [], true, "撤离并返回")
+
+
+func _talk(site: RelaySite) -> void:
+	_dialogue_site = site
+	_dialogue_stage = story.stage
+	_dialogue_page = 0
+	if site.key != story.current_target():
+		_dialogue_lines = [RelayStory.WAITING[site.partner]]
+		_dialogue_stage = -1
+	elif story.stage == RelayStory.RELAY_REPAIR and rules.carried(SupplyRules.Kind.IRON) == 0:
+		_dialogue_lines = ["中继缺一份生铁。灰脊的铁矿可以带回气象站熔炼。我守着线路，等你回来。"]
+		_dialogue_stage = -1
+	else:
+		_dialogue_lines = RelayStory.LINES[story.stage]
+	_set_panel(GearPanels.PanelKind.DIALOGUE)
+	_show_dialogue()
+
+
+func _show_dialogue() -> void:
+	var action := "继续"
+	if _dialogue_page == _dialogue_lines.size() - 1:
+		match _dialogue_stage:
+			-1: action = "结束对话"
+			RelayStory.RELAY_REPAIR: action = "交付 1 份生铁"
+			RelayStory.FINALE_READY: action = "进入北压泵房"
+			_: action = "记下线索"
+	hud.gear.dialogue(_dialogue_site.title, _dialogue_lines[_dialogue_page], action)
+
+
+func _next_dialogue() -> void:
+	if hud.gear.active_panel != GearPanels.PanelKind.DIALOGUE or not is_instance_valid(_dialogue_site):
+		return
+	if _dialogue_page < _dialogue_lines.size() - 1:
+		_dialogue_page += 1
+		_show_dialogue()
+		return
+	var key := _dialogue_site.key
+	_set_panel(GearPanels.PanelKind.NONE)
+	if _dialogue_stage != story.stage or key != story.current_target():
+		return
+	if story.stage == RelayStory.FINALE_READY:
+		_enter_finale()
+	elif story.advance(key, rules):
+		_refresh_display()
+		hud.notify(RelayStory.STEPS[story.stage - 1][3], 4.0)
+		_save()
+
+
 func _read_journal(hint := "") -> void:
 	var line := hint
 	if line.is_empty() and story.stage > 0:
 		line = RelayStory.STEPS[story.stage - 1][3]
 	if line.is_empty():
-		line = "撤离广播断了。气象站里的通讯台也许还留着最后收到的消息。"
+		line = "撤离广播断了。去气象站里问问负责接收的沈苇。"
 	hud.gear.journal("%s\n\n当前目标\n%s" % [line, story.objective()])
 
 
@@ -488,12 +686,10 @@ func _interact_site(site: RelaySite) -> void:
 			hud.notify("  ·  ".join(items))
 			_save()
 		RelaySite.Role.STORY:
-			var previous := story.stage
-			_read_journal(story.advance(site.key, rules))
+			_read_journal(RelayStory.NOTES[site.key])
 			_set_panel(GearPanels.PanelKind.JOURNAL)
-			hud.show_story(story)
-			if previous != story.stage:
-				_save()
+		RelaySite.Role.NPC:
+			_talk(site)
 		RelaySite.Role.BENCH, RelaySite.Role.FURNACE:
 			_station = SupplyRules.Station.BENCH if site.role == RelaySite.Role.BENCH else SupplyRules.Station.FURNACE
 			_set_panel(GearPanels.PanelKind.CRAFT)
@@ -653,11 +849,17 @@ func _tool_contact(tool: int, facing: Vector3) -> void:
 
 
 func _current_magazine() -> RelayMagazine:
+	if finale != null:
+		return finale.gun
 	return road.gun if road != null else magazine
 
 
+func _ammo_inventory() -> SupplyRules:
+	return finale.reserve if finale != null else rules
+
+
 func _reload() -> void:
-	_current_magazine().start_reload(rules)
+	_current_magazine().start_reload(_ammo_inventory())
 	_refresh_magazine()
 
 
@@ -671,8 +873,10 @@ func _fire() -> void:
 	var gun := _current_magazine()
 	if player.panel_open or (road != null and (road.outcome != RoadRun.Outcome.ACTIVE or not road.choices.is_empty())):
 		return
+	if finale != null and finale.outcome != PumpFight.Outcome.ACTIVE:
+		return
 	if not gun.take_shot(road.cadence_scale() if road != null else 1.0):
-		if gun.rounds == 0 and gun.reload_left <= 0 and gun.shot_left <= 0 and not gun.start_reload(rules):
+		if gun.rounds == 0 and gun.reload_left <= 0 and gun.shot_left <= 0 and not gun.start_reload(_ammo_inventory()):
 			hud.notify("没有后备弹药")
 			gun.shot_left = 0.40
 		return
@@ -681,7 +885,11 @@ func _fire() -> void:
 	var start := camera.project_ray_origin(middle)
 	var axis := camera.project_ray_normal(middle)
 	var reach := RoadRun.SHOT_RANGE if road != null else 36.0
-	var damage := road.shot_damage() if road != null else gun.damage
+	var damage := gun.damage
+	if road != null:
+		damage = road.shot_damage()
+	elif finale != null:
+		damage = finale.shot_damage()
 	var through := road.pierce_damage(damage) if road != null else 0
 	var aim := start + axis * (reach + 3.0)
 	var ray := PhysicsRayQueryParameters3D.create(start, aim, 13, [player.get_rid()])
@@ -703,7 +911,7 @@ func _fire() -> void:
 
 
 func _refresh_magazine() -> void:
-	hud.gear.show_magazine(_current_magazine(),rules.carried(SupplyRules.Kind.AMMO),player.equipped == SupplyRules.Tool.CARBINE)
+	hud.gear.show_magazine(_current_magazine(),_ammo_inventory().carried(SupplyRules.Kind.AMMO),player.equipped == SupplyRules.Tool.CARBINE)
 
 
 func _shot_effect(muzzle: Vector3, impact: Vector3, tint: Color) -> void:
@@ -787,6 +995,14 @@ func _prompt(target: Node3D) -> String:
 			return "松树 · 需要铁斧"
 		return "按 E 砍树 · 还需 %d 次" % target.chops_left
 	if target is RelaySite:
+		if target.role == RelaySite.Role.NPC:
+			return "按 E 与%s对话" % target.title
+		if target.role == RelaySite.Role.PUMP_CONTROL:
+			if target.used:
+				return "泄压阀已使用"
+			if finale.exposed_for > 0:
+				return "等待稳压器恢复"
+			return "按 E 打开泄压阀"
 		if target.role == RelaySite.Role.CRATE and target.refill_seconds > 0:
 			return target.cooldown_text()
 		return "按 E 查看%s" % target.title
@@ -846,7 +1062,7 @@ func _refresh_bag() -> void:
 
 
 func _refresh_display() -> void:
-	if _map_id == RelayStory.ROAD_MAP:
+	if _map_id >= RelayStory.ROAD_MAP:
 		return
 	region.lighting.update_light(survival.phase, survival.remaining)
 	hud.show_survival(survival, _map_id, raid.active.size(), raid.chasing_count)
@@ -858,7 +1074,7 @@ func _guide() -> void:
 	if story.stage >= RelayStory.STEPS.size():
 		return
 	var destination := region.portal
-	var key: String = RelayStory.STEPS[story.stage][2]
+	var key := story.current_target()
 	for site in region.sites:
 		if site.key == key:
 			destination = site
@@ -871,5 +1087,7 @@ func _guide() -> void:
 	hud.route.text += "\n%s  %s  %d 米" % [DIRECTIONS[segment], destination.title, roundi(horizontal.length())]
 
 func _exit_tree() -> void:
+	if finale != null:
+		finale.dispose()
 	if road != null:
 		road.dispose()

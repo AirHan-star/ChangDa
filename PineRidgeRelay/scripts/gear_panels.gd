@@ -10,8 +10,9 @@ signal station_requested(station: int)
 signal upgrade_requested(upgrade: int)
 signal road_leave_requested
 signal road_resume_requested
+signal dialogue_next_requested
 
-enum PanelKind { NONE, CRAFT, BAG, TRAVEL, JOURNAL, ROAD }
+enum PanelKind { NONE, CRAFT, BAG, TRAVEL, JOURNAL, ROAD, DIALOGUE }
 
 const RESOURCE_NAMES := SupplyRules.ITEMS
 const TOOL_NAMES := SupplyRules.TOOLS
@@ -40,6 +41,9 @@ var _travel: VBoxContainer
 var _journal: VBoxContainer
 var _travel_options: Array[Button] = []
 var _reading: Label
+var _dialogue: VBoxContainer
+var _dialogue_line: Label
+var _dialogue_next: Button
 var _craft_context: Label
 var _recipe_rows: Array[Control] = []
 var _ammo: Label
@@ -76,8 +80,9 @@ func show_panel(panel: int) -> void:
 	_travel.visible = panel == PanelKind.TRAVEL
 	_journal.visible = panel == PanelKind.JOURNAL
 	_road_options.visible = panel == PanelKind.ROAD
+	_dialogue.visible = panel == PanelKind.DIALOGUE
 	_close.visible = panel != PanelKind.ROAD
-	_title.text = ["", "合成", "背包", "中继传送", "余讯记录", "断线公路"][panel]
+	_title.text = ["", "合成", "背包", "中继传送", "余讯记录", "断线公路", "对话"][panel]
 
 
 func refresh(rules: SupplyRules, equipped_tool: int) -> void:
@@ -122,6 +127,12 @@ func road_dialog(title: String, text: String, upgrades: Array[int], can_resume: 
 			button.text = "%s    ·    %s" % [perk[0],perk[1]]
 	_road_resume.visible = can_resume
 	_road_leave.text = leave
+
+
+func dialogue(speaker: String, line: String, action: String) -> void:
+	_title.text = speaker
+	_dialogue_line.text = line
+	_dialogue_next.text = "E  " + action
 
 
 func craft_context(station: int, rules: SupplyRules, available: Callable, hint: String) -> void:
@@ -252,7 +263,7 @@ func _build_overlay() -> void:
 	_reading.custom_minimum_size = Vector2(510, 180)
 	_reading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_journal.add_child(_reading)
-	for map_id in range(RelayStory.MAP_NAMES.size()):
+	for map_id in range(RelayStory.ROAD_MAP + 1):
 		var destination := _button("")
 		destination.custom_minimum_size.y = 47
 		destination.pressed.connect(func(): travel_requested.emit(map_id))
@@ -261,6 +272,17 @@ func _build_overlay() -> void:
 	_build_recipes()
 	_build_bag()
 	_build_road_panel(body)
+	_dialogue = VBoxContainer.new()
+	_dialogue.add_theme_constant_override(&"separation", 12)
+	body.add_child(_dialogue)
+	_dialogue_line = _label("", 20)
+	_dialogue_line.custom_minimum_size = Vector2(510, 106)
+	_dialogue_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_dialogue.add_child(_dialogue_line)
+	_dialogue_next = _button("")
+	_dialogue_next.custom_minimum_size.y = 43
+	_dialogue_next.pressed.connect(func(): dialogue_next_requested.emit())
+	_dialogue.add_child(_dialogue_next)
 	show_panel(PanelKind.NONE)
 
 

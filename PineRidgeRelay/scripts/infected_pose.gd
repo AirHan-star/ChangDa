@@ -136,6 +136,54 @@ func fit_road_armor() -> void:
 		finishes.box(face,Vector3(side*0.092,1.603,0.10),Vector3(0.036,0.128,0.071),"iron",plates)
 
 
+func fit_pump_armor() -> void:
+	var finishes := RegionFinishes.new()
+	var chest := _armor_mount("Chest")
+	var head := _armor_mount("Head")
+	var iron := Color("#6b756b")
+	var copper := Color("#a86e43")
+	var enamel := Color("#8b9a82")
+	var soot := Color("#394947")
+	finishes.box(chest, Vector3(0, 1.22, -0.155), Vector3(0.37, 0.37, 0.14), "iron", soot)
+	for side in [-1.0, 1.0]:
+		var x: float = side * 0.137
+		_pump_part(chest, Vector3(x, 1.222, -0.258), 0.097, 0.36, finishes.paint("iron", enamel))
+		_pump_part(chest, Vector3(x, 1.42, -0.258), 0.055, 0.080, finishes.paint("iron", copper))
+		for y in [1.101, 1.326]:
+			_pump_part(chest, Vector3(x, y, -0.258), 0.106, 0.062, finishes.paint("iron", iron))
+		finishes.box(chest, Vector3(x, 1.24, 0.119), Vector3(0.075, 0.34, 0.058), "wood", soot)
+		var arm := _armor_mount("ArmR" if side > 0 else "ArmL")
+		var cap := _pump_part(arm, Vector3(side * 0.30, 1.334, 0.025), 0.13, 0.088, finishes.paint("iron", copper))
+		cap.rotation.z = side * 0.42
+		finishes.box(arm, Vector3(side * 0.35, 1.30, 0.08), Vector3(0.089, 0.057, 0.082), "iron", enamel)
+		var hose := _pump_part(chest, Vector3(side * 0.172, 1.425, -0.109), 0.034, 0.28, finishes.paint("iron", copper))
+		hose.rotation.x = PI / 2.0
+		var respirator := _pump_part(head, Vector3(side * 0.071, 1.545, 0.156), 0.048, 0.047, finishes.paint("iron", iron))
+		respirator.rotation.x = PI / 2.0
+		var filter := _pump_part(head, Vector3(side * 0.071, 1.545, 0.181), 0.037, 0.012, finishes.paint("iron", copper))
+		filter.rotation.x = PI / 2.0
+	finishes.box(head, Vector3(0, 1.56, 0.138), Vector3(0.143, 0.104, 0.09), "iron", soot)
+	_pump_part(head, Vector3(0, 1.715, 0.018), 0.131, 0.048, finishes.paint("iron", copper))
+	_pump_part(head, Vector3(0, 1.748, 0.002), 0.114, 0.054, finishes.paint("iron", enamel))
+	finishes.box(chest, Vector3(0, 1.193, 0.166), Vector3(0.213, 0.195, 0.084), "iron", iron)
+	var gauge := _pump_part(chest, Vector3(0, 1.222, 0.217), 0.075, 0.046, finishes.paint("iron", copper))
+	gauge.rotation.x = PI / 2.0
+	var glass := _pump_part(chest, Vector3(0, 1.222, 0.247), 0.057, 0.012, finishes.paint("floor", Color("#c5be8f")))
+	glass.rotation.x = PI / 2.0
+	var needle := finishes.box(chest, Vector3(0.007, 1.228, 0.258), Vector3(0.014, 0.065, 0.016), "iron", soot)
+	needle.rotation.z = -0.63
+
+
+func _pump_part(parent: Node3D, at: Vector3, radius: float, depth: float, material: Material) -> MeshInstance3D:
+	var shell := CylinderMesh.new()
+	shell.radial_segments = 10
+	shell.rings = 0
+	shell.height = depth
+	shell.top_radius = radius * 0.96
+	shell.bottom_radius = radius
+	return RelayGeometry.mesh(parent, shell, at, material)
+
+
 func _armor_mount(bone: String) -> Node3D:
 	var attachment := BoneAttachment3D.new()
 	attachment.bone_name = bone

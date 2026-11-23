@@ -19,6 +19,7 @@ var travel_speed := SPEED
 var elite_scale := 1.0
 var road_hit := 14
 var road_wave := 0
+var pump_guard := false
 var _player_attack_in := PLAYER_WINDUP
 var _fall_time := 0.0
 var _fall_side := 1.0
@@ -44,8 +45,12 @@ func _fit_elite() -> void:
 	hull.shape = capsule
 	hull.position.y = capsule.height * 0.5
 	model.scale = Vector3.ONE * elite_scale
-	model.fit_road_armor()
-	RelayGeometry.label(self,"重装感染者",Vector3.UP*(1.93*elite_scale),Color("#ed9868"))
+	if pump_guard:
+		model.fit_pump_armor()
+	else:
+		model.fit_road_armor()
+	var label := RelayStory.FINALE_BOSS if pump_guard else "重装感染者"
+	RelayGeometry.label(self, label, Vector3.UP * (1.93 * elite_scale), Color("#ed9868"))
 
 
 func return_home() -> void:

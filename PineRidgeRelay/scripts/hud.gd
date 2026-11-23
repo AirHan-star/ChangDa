@@ -116,6 +116,27 @@ func show_road(run: RoadRun) -> void:
 	_xp_bar.value = run.experience
 
 
+func finale_controls() -> void:
+	_controls.text = "左键连发  ·  右键瞄准  ·  R 换弹\nE 操作泄压阀  ·  Esc 撤离"
+
+
+func show_finale(fight: PumpFight) -> void:
+	mission.text = RelayStory.STEPS[RelayStory.FINALE_READY][0]
+	route.text = "击败回压工长，恢复公共频段"
+	phase_label.text = "北压泵房"
+	phase_label.modulate = ACCENT
+	region_label.text = "%s  %d / %d" % [RelayStory.FINALE_BOSS, fight.boss_health(), PumpFight.BOSS_HEALTH]
+	if fight.warning_for > 0.0:
+		raid_label.text = "泄压冲击 · 快离开警戒区"
+	elif fight.exposed_for > 0.0:
+		raid_label.text = "稳压器停机 · %.1f 秒双倍伤害" % fight.exposed_for
+	else:
+		raid_label.text = "稳压器过载 · 当心脚下" if fight.pressured() else "两侧各有一个泄压阀"
+	raid_label.modulate = WARNING if fight.warning_for > 0.0 else MINT
+	_xp_bar.max_value = PumpFight.BOSS_HEALTH
+	_xp_bar.value = fight.boss_health()
+
+
 func road_mode(enabled: bool) -> void:
 	_xp_bar.visible = enabled
 	_controls.text = "按住左键连发  ·  右键瞄准  ·  R 换弹\nEsc 打开退出菜单" if enabled else _original_controls

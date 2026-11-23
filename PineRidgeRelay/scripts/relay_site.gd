@@ -1,7 +1,7 @@
 class_name RelaySite
 extends Marker3D
 
-enum Role { PORTAL, STORY, CRATE, BENCH, FURNACE }
+enum Role { PORTAL, STORY, CRATE, BENCH, FURNACE, NPC, PUMP_CONTROL }
 var role: int
 var key: String
 var title: String
@@ -9,6 +9,8 @@ var contents: Dictionary
 var sign: Label3D
 var lid: Node3D
 var refill_seconds := 0
+var partner := -1
+var used := false
 
 
 func mark(label_text: String, offset: Vector3, tint := Color("#eab572")) -> void:

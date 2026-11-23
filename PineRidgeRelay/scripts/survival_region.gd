@@ -73,6 +73,20 @@ func build(map_id: int, opened: Dictionary, rules: SupplyRules, crate_seed: int,
 		_station()
 		_station_trees()
 		_portal(Vector2(5.8, -4.8))
+	elif id == RelayStory.FINALE_MAP:
+		ground = Node3D.new()
+		add_child(ground)
+		_sky()
+		lighting.update_light(SurvivalRules.Phase.DAY, 12.0)
+		lighting.environment.fog_enabled = false
+		lighting.environment.ambient_light_energy = 0.79
+		lighting.environment.ambient_light_color = Color("#c0d3cf")
+		var house := PumpHouse.new(ground, _finishes)
+		arrival = Vector3(0, 0.07, -14.0)
+		shelter = arrival
+		for side in [-1, 1]:
+			var valve := _site(RelaySite.Role.PUMP_CONTROL, "valve_%d" % side, "泄压阀", house.control_point(side))
+			valve.mark("泄压阀", Vector3(0, 0.70, 0), Color("#9fe0c2"))
 	elif id == RelayStory.ROAD_MAP:
 		ground = Node3D.new()
 		add_child(ground)
@@ -165,15 +179,15 @@ func refresh_stations(rules: SupplyRules) -> void:
 
 
 func deposits() -> Array:
-	return [] if id == RelayStory.ROAD_MAP else DEPOSITS[id]
+	return [] if id >= RelayStory.ROAD_MAP else DEPOSITS[id]
 
 
 func nests() -> Array:
-	return [] if id == RelayStory.ROAD_MAP else NESTS[id]
+	return [] if id >= RelayStory.ROAD_MAP else NESTS[id]
 
 
 func surface(flat: Vector2) -> Vector3:
-	if id == 0 or id == 2 or id == RelayStory.ROAD_MAP:
+	if id == 0 or id == 2 or id >= RelayStory.ROAD_MAP:
 		return Vector3(flat.x, 0, flat.y)
 	var origin := (flat / 2.4).floor() * 2.4
 	var fraction := (flat - origin) / 2.4
@@ -262,6 +276,7 @@ func _border() -> void:
 
 
 func _station() -> void:
+	_contact(0, Vector3(-2.8, 0.05, -13.6))
 	var radio := _site(RelaySite.Role.STORY, "station_radio", "通讯台", Vector3(-3.15,1.05,-15.55))
 	radio.mark("通讯台", Vector3(0, 0.72, 0))
 	var crate := _site(RelaySite.Role.CRATE, "station_supplies", "气象站补给箱", Vector3(2.65,1.23,-14.15))
@@ -272,6 +287,7 @@ func _station() -> void:
 func _quarry() -> void:
 	var work := _structure("quarry", "采石场工棚", Vector2(-1,2), Vector2(8.0,7.0),
 		RegionalBuilding.Style.SERVICE, Color("#c7b998"), true)
+	_contact(1, work.to_global(Vector3(-3.20, 0.01, 2.27)))
 	_terminal(work.to_global(Vector3(-1.8,0,-1.65)), "quarry_log", "交接簿")
 	_stock(work, "quarry_crate", "工棚木箱", {SupplyRules.Kind.WOOD: 5, SupplyRules.Kind.CAN: 2, SupplyRules.Kind.STONE: 4})
 	var weigh := _structure("weigh", "地磅值班室", Vector2(7.8,-13), Vector2(6.7,5.8),
@@ -288,6 +304,7 @@ func _city() -> void:
 	_stock(clinic, "clinic_crate", "诊所木箱", {SupplyRules.Kind.CAN: 5, SupplyRules.Kind.WOOD: 2})
 	var dispatch := _structure("dispatch", "旧城调度站", Vector2(14,1), Vector2(11.5,10.0),
 		RegionalBuilding.Style.DISPATCH, Color("#cba892"), false, 2)
+	_contact(2, surface(Vector2(6.8, 7.55)))
 	_terminal(dispatch.to_global(Vector3(-2.4,0,-2)), "city_dispatch", "调度录音")
 	_stock(dispatch, "dispatch_crate", "调度站木箱", {SupplyRules.Kind.WOOD: 4, SupplyRules.Kind.CAN: 2, SupplyRules.Kind.STONE: 3})
 	var depot := _structure("depot", "物资库", Vector2(-12,15), Vector2(9.0,8.0),
@@ -310,6 +327,7 @@ func _city() -> void:
 func _basin() -> void:
 	var shelter_at := _structure("relay", "应急中继棚", Vector2(1,22), Vector2(8.0,8.0),
 		RegionalBuilding.Style.RELAY, Color("#a1b1a0"), false)
+	_contact(3, shelter_at.to_global(Vector3(2.48, 0.01, 1.54)))
 	_terminal(shelter_at.to_global(Vector3(-1.8,0,-1.7)), "basin_relay", "应急中继")
 	_stock(shelter_at, "relay_crate", "中继棚木箱", {SupplyRules.Kind.CAN: 3, SupplyRules.Kind.WOOD: 4})
 	var valve := _structure("valve", "阀门值房", Vector2(8.6,-20), Vector2(6.8,6.1),
@@ -365,6 +383,35 @@ func _portal(flat: Vector2) -> void:
 	_block(at + Vector3.UP*2.45, Vector3(2.72,0.23,0.75), RUST, true)
 	_block(at + Vector3(0,2.43,0.39), Vector3(1.73,0.08,0.06), LIGHT, false, 1.0)
 	arrival = surface(flat + Vector2(0,1.54)) + Vector3.UP*0.26
+
+
+func _contact(index: int, at: Vector3) -> void:
+	var person := RelayContact.new()
+	person.role = index
+	person.name = ["Shen", "Liang", "Xu", "Chi"][index]
+	person.position = at
+	person.rotation.y = RelayContact.BASE_YAW[index]
+	ground.add_child(person)
+	var seated := index == 1
+	var hull := CapsuleShape3D.new()
+	hull.height = 0.87 if seated else 1.58
+	hull.radius = 0.27
+	var body_anchor := Marker3D.new()
+	body_anchor.position = Vector3(0, 0.53 if seated else 0.80, 0.14 if seated else 0.0)
+	person.add_child(body_anchor)
+	RelayGeometry.body(body_anchor, hull)
+	if seated:
+		_finishes.box(person, Vector3(0, 0.212, -0.065), Vector3(0.47, 0.424, 0.34), "wood", Color("#696150"), true)
+		_finishes.box(person, Vector3(0, 0.88, -0.255), Vector3(0.67, 0.93, 0.21), "wood", Color("#766d58"), true)
+		for y in [0.58, 1.19]:
+			_finishes.box(person, Vector3(0, y, -0.137), Vector3(0.61, 0.082, 0.032), "iron", RUST)
+		for x in [-0.17, 0.17]:
+			_finishes.box(person, Vector3(x, 0.216, 0.109), Vector3(0.046, 0.411, 0.018), "iron", RUST)
+	var target := at + Vector3(0, 0.82 if seated else 1.32, 0.48 if seated else 0.31).rotated(Vector3.UP, person.rotation.y)
+	var contact := _site(RelaySite.Role.NPC, "npc_" + person.name.to_lower(), RelayContact.NAMES[index], target)
+	contact.partner = index
+	contact.mark("%s  ·  %s" % [contact.title, RelayContact.ROLES[index]],
+		Vector3(0, 0.57 if seated else 0.71, 0), Color("#d8e4b5"))
 
 
 func _terminal(at: Vector3, key: String, title: String) -> void:
