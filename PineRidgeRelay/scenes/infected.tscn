@@ -1,65 +1,12 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/infected.gd" id="Script"]
 
-[sub_resource type="StandardMaterial3D" id="Jacket"]
-albedo_color = Color(0.31, 0.39, 0.31, 1)
-roughness = 0.88
-
-[sub_resource type="StandardMaterial3D" id="Pants"]
-albedo_color = Color(0.22, 0.23, 0.27, 1)
-roughness = 0.88
-
-[sub_resource type="StandardMaterial3D" id="Skin"]
-albedo_color = Color(0.45, 0.54, 0.43, 1)
-roughness = 0.88
-
-[sub_resource type="StandardMaterial3D" id="Boot"]
-albedo_color = Color(0.16, 0.18, 0.19, 1)
-roughness = 0.88
-
-[sub_resource type="StandardMaterial3D" id="Eyes"]
-albedo_color = Color(0.99, 0.44, 0.27, 1)
-roughness = 0.88
-emission_enabled = true
-emission = Color(0.99, 0.44, 0.27, 1)
-emission_energy_multiplier = 1.0
+[ext_resource type="PackedScene" path="res://assets/world/infected.glb" id="Visual"]
 
 [sub_resource type="CapsuleShape3D" id="Shape"]
 radius = 0.30
 height = 1.68
-
-[sub_resource type="BoxMesh" id="JacketMesh"]
-material = SubResource("Jacket")
-size = Vector3(0.5, 0.56, 0.29)
-
-[sub_resource type="BoxMesh" id="HeadMesh"]
-material = SubResource("Skin")
-size = Vector3(0.29, 0.33, 0.27)
-
-[sub_resource type="BoxMesh" id="LeftEyeMesh"]
-material = SubResource("Eyes")
-size = Vector3(0.048, 0.042, 0.03)
-
-[sub_resource type="BoxMesh" id="LegMesh"]
-material = SubResource("Pants")
-size = Vector3(0.17, 0.66, 0.21)
-
-[sub_resource type="BoxMesh" id="BootMesh"]
-material = SubResource("Boot")
-size = Vector3(0.19, 0.24, 0.3)
-
-[sub_resource type="BoxMesh" id="ArmMesh"]
-material = SubResource("Jacket")
-size = Vector3(0.15, 0.49, 0.16)
-
-[sub_resource type="BoxMesh" id="HandMesh"]
-material = SubResource("Skin")
-size = Vector3(0.13, 0.18, 0.13)
-
-[sub_resource type="BoxMesh" id="RightEyeMesh"]
-material = SubResource("Eyes")
-size = Vector3(0.048, 0.042, 0.03)
 
 [node name="Infected" type="CharacterBody3D"]
 collision_layer = 4
@@ -73,64 +20,4 @@ shape = SubResource("Shape")
 
 [node name="Model" type="Node3D" parent="."]
 
-[node name="Jacket" type="MeshInstance3D" parent="Model"]
-position = Vector3(0, 1.14, 0)
-mesh = SubResource("JacketMesh")
-rotation_degrees = Vector3(-8, 0, -6)
-
-[node name="Head" type="MeshInstance3D" parent="Model"]
-position = Vector3(-0.04, 1.6, 0.06)
-mesh = SubResource("HeadMesh")
-rotation_degrees = Vector3(-12, 0, 12)
-
-[node name="LeftEye" type="MeshInstance3D" parent="Model"]
-position = Vector3(-0.113, 1.619, 0.2)
-mesh = SubResource("LeftEyeMesh")
-
-[node name="LeftLeg" type="Node3D" parent="Model"]
-position = Vector3(-0.13, 0.88, 0)
-
-[node name="Leg" type="MeshInstance3D" parent="Model/LeftLeg"]
-position = Vector3(0, -0.32, 0)
-mesh = SubResource("LegMesh")
-
-[node name="Boot" type="MeshInstance3D" parent="Model/LeftLeg"]
-position = Vector3(0, -0.72, 0.05)
-mesh = SubResource("BootMesh")
-
-[node name="LeftArm" type="Node3D" parent="Model"]
-position = Vector3(-0.3, 1.33, 0.01)
-
-[node name="Arm" type="MeshInstance3D" parent="Model/LeftArm"]
-position = Vector3(0, -0.23, 0.05)
-mesh = SubResource("ArmMesh")
-
-[node name="Hand" type="MeshInstance3D" parent="Model/LeftArm"]
-position = Vector3(0, -0.51, 0.06)
-mesh = SubResource("HandMesh")
-
-[node name="RightEye" type="MeshInstance3D" parent="Model"]
-position = Vector3(0.023000000000000007, 1.6609999999999998, 0.2)
-mesh = SubResource("RightEyeMesh")
-
-[node name="RightLeg" type="Node3D" parent="Model"]
-position = Vector3(0.13, 0.88, 0)
-
-[node name="Leg" type="MeshInstance3D" parent="Model/RightLeg"]
-position = Vector3(0, -0.32, 0)
-mesh = SubResource("LegMesh")
-
-[node name="Boot" type="MeshInstance3D" parent="Model/RightLeg"]
-position = Vector3(0, -0.72, 0.05)
-mesh = SubResource("BootMesh")
-
-[node name="RightArm" type="Node3D" parent="Model"]
-position = Vector3(0.3, 1.4100000000000001, 0.01)
-
-[node name="Arm" type="MeshInstance3D" parent="Model/RightArm"]
-position = Vector3(0, -0.23, 0.05)
-mesh = SubResource("ArmMesh")
-
-[node name="Hand" type="MeshInstance3D" parent="Model/RightArm"]
-position = Vector3(0, -0.51, 0.06)
-mesh = SubResource("HandMesh")
+[node name="Visual" parent="Model" instance=ExtResource("Visual")]

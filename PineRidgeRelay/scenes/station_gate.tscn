@@ -1,8 +1,12 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/station_gate.gd" id="Script"]
 
 [ext_resource type="Texture2D" path="res://assets/station/shutter_steel.png" id="WeatheredSteel"]
+
+[ext_resource type="PackedScene" path="res://assets/world/shutter.glb" id="Panel"]
+
+[ext_resource type="PackedScene" path="res://assets/world/door_brace.glb" id="BraceVisual"]
 
 [sub_resource type="StandardMaterial3D" id="Metal"]
 albedo_color = Color(0.67, 0.75, 0.74, 1)
@@ -11,22 +15,6 @@ metallic = 0.26
 roughness = 0.82
 uv1_scale = Vector3(0.8, 0.8, 0.8)
 uv1_triplanar = true
-
-[sub_resource type="StandardMaterial3D" id="Rail"]
-albedo_color = Color(0.91, 0.91, 0.85, 1)
-albedo_texture = ExtResource("WeatheredSteel")
-metallic = 0.29
-roughness = 0.78
-uv1_scale = Vector3(0.8, 0.8, 0.8)
-uv1_triplanar = true
-
-[sub_resource type="StandardMaterial3D" id="Timber"]
-albedo_color = Color(0.66, 0.37, 0.17, 1)
-roughness = 0.88
-
-[sub_resource type="StandardMaterial3D" id="Stripe"]
-albedo_color = Color(0.92, 0.57, 0.23, 1)
-roughness = 0.88
 
 [sub_resource type="StandardMaterial3D" id="Glow"]
 albedo_color = Color(0.97, 0.54, 0.21, 1)
@@ -37,26 +25,6 @@ emission_energy_multiplier = 1.0
 
 [sub_resource type="BoxShape3D" id="Shape"]
 size = Vector3(2.70, 2.42, 0.30)
-
-[sub_resource type="BoxMesh" id="DoorMesh"]
-material = SubResource("Metal")
-size = Vector3(2.68, 2.4, 0.23)
-
-[sub_resource type="BoxMesh" id="SlatMesh"]
-material = SubResource("Rail")
-size = Vector3(2.67, 0.039, 0.28)
-
-[sub_resource type="BoxMesh" id="FootMesh"]
-material = SubResource("Stripe")
-size = Vector3(2.67, 0.16, 0.29)
-
-[sub_resource type="BoxMesh" id="FrontMesh"]
-material = SubResource("Timber")
-size = Vector3(2.58, 0.15, 0.14)
-
-[sub_resource type="BoxMesh" id="BackMesh"]
-material = SubResource("Timber")
-size = Vector3(2.58, 0.15, 0.14)
 
 [sub_resource type="BoxMesh" id="LampMesh"]
 material = SubResource("Glow")
@@ -82,83 +50,43 @@ disabled = true
 position = Vector3(0, 2.44, 0)
 scale = Vector3(1, 0.10, 1)
 
-[node name="Door" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -1.2, 0)
-mesh = SubResource("DoorMesh")
-
-[node name="Slat0" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -0.21, 0)
-mesh = SubResource("SlatMesh")
-
-[node name="Slat1" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -0.542, 0)
-mesh = SubResource("SlatMesh")
-
-[node name="Slat2" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -0.874, 0)
-mesh = SubResource("SlatMesh")
-
-[node name="Slat3" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -1.206, 0)
-mesh = SubResource("SlatMesh")
-
-[node name="Slat4" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -1.538, 0)
-mesh = SubResource("SlatMesh")
-
-[node name="Slat5" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -1.87, 0)
-mesh = SubResource("SlatMesh")
-
-[node name="Slat6" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -2.202, 0)
-mesh = SubResource("SlatMesh")
-
-[node name="Foot" type="MeshInstance3D" parent="Shutter"]
-position = Vector3(0, -2.32, 0)
-mesh = SubResource("FootMesh")
+[node name="SteelPanel" parent="Shutter" instance=ExtResource("Panel")]
 
 [node name="Brace1" type="Node3D" parent="Shutter"]
 position = Vector3(0, -0.65, 0)
 visible = false
 
-[node name="Front" type="MeshInstance3D" parent="Shutter/Brace1"]
+[node name="Front" parent="Shutter/Brace1" instance=ExtResource("BraceVisual")]
 position = Vector3(0, 0, 0.18)
-mesh = SubResource("FrontMesh")
 rotation_degrees = Vector3(0, 0, -3)
 
-[node name="Back" type="MeshInstance3D" parent="Shutter/Brace1"]
+[node name="Back" parent="Shutter/Brace1" instance=ExtResource("BraceVisual")]
 position = Vector3(0, 0, -0.18)
-mesh = SubResource("BackMesh")
-rotation_degrees = Vector3(0, 0, -3)
+rotation_degrees = Vector3(0, 180, -3)
 
 [node name="Brace2" type="Node3D" parent="Shutter"]
 position = Vector3(0, -1.2000000000000002, 0)
 visible = false
 
-[node name="Front" type="MeshInstance3D" parent="Shutter/Brace2"]
+[node name="Front" parent="Shutter/Brace2" instance=ExtResource("BraceVisual")]
 position = Vector3(0, 0, 0.18)
-mesh = SubResource("FrontMesh")
 rotation_degrees = Vector3(0, 0, 4)
 
-[node name="Back" type="MeshInstance3D" parent="Shutter/Brace2"]
+[node name="Back" parent="Shutter/Brace2" instance=ExtResource("BraceVisual")]
 position = Vector3(0, 0, -0.18)
-mesh = SubResource("BackMesh")
-rotation_degrees = Vector3(0, 0, 4)
+rotation_degrees = Vector3(0, 180, 4)
 
 [node name="Brace3" type="Node3D" parent="Shutter"]
 position = Vector3(0, -1.75, 0)
 visible = false
 
-[node name="Front" type="MeshInstance3D" parent="Shutter/Brace3"]
+[node name="Front" parent="Shutter/Brace3" instance=ExtResource("BraceVisual")]
 position = Vector3(0, 0, 0.18)
-mesh = SubResource("FrontMesh")
 rotation_degrees = Vector3(0, 0, -3)
 
-[node name="Back" type="MeshInstance3D" parent="Shutter/Brace3"]
+[node name="Back" parent="Shutter/Brace3" instance=ExtResource("BraceVisual")]
 position = Vector3(0, 0, -0.18)
-mesh = SubResource("BackMesh")
-rotation_degrees = Vector3(0, 0, -3)
+rotation_degrees = Vector3(0, 180, -3)
 
 [node name="StatusLamps" type="Node3D" parent="."]
 

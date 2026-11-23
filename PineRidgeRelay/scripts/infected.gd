@@ -11,10 +11,12 @@ var _stride := 0.0
 var _hit_feedback := 0.0
 
 @onready var model: Node3D = $Model
-@onready var left_leg: Node3D = $Model/LeftLeg
-@onready var right_leg: Node3D = $Model/RightLeg
-@onready var left_arm: Node3D = $Model/LeftArm
-@onready var right_arm: Node3D = $Model/RightArm
+@onready var left_leg: Node3D = $Model/Visual/LeftLeg
+@onready var right_leg: Node3D = $Model/Visual/RightLeg
+@onready var left_arm: Node3D = $Model/Visual/LeftArm
+@onready var right_arm: Node3D = $Model/Visual/RightArm
+@onready var left_elbow: Node3D = $Model/Visual/LeftArm/ElbowLeft
+@onready var right_elbow: Node3D = $Model/Visual/RightArm/ElbowRight
 
 
 func advance(delta: float, stop_z: float, front: bool) -> bool:
@@ -31,6 +33,8 @@ func advance(delta: float, stop_z: float, front: bool) -> bool:
 	right_leg.rotation.x = -swing
 	left_arm.rotation.x = -1.15 + swing * 0.55
 	right_arm.rotation.x = -1.25 - swing * 0.55
+	left_elbow.rotation.x = -0.23 + swing * 0.37
+	right_elbow.rotation.x = -0.14 - swing * 0.26
 	_hit_feedback = maxf(0.0, _hit_feedback - delta)
 	model.rotation.z = _hit_feedback * 0.74
 
@@ -42,6 +46,7 @@ func advance(delta: float, stop_z: float, front: bool) -> bool:
 		return true
 	if _attack_in > HIT_INTERVAL - 0.38:
 		right_arm.rotation.x = -1.86
+		right_elbow.rotation.x = -0.44
 	return false
 
 

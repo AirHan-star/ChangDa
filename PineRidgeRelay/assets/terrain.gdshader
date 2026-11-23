@@ -30,8 +30,15 @@ void fragment() {
 	float edge = abs(map_position.x - center) + (large_grain - 0.5) * 0.95;
 	float trail = (1.0 - smoothstep(1.19, 1.98, edge))
 		* smoothstep(-9.0, -6.5, z) * (1.0 - smoothstep(28.0, 34.0, z));
-	vec3 woods = mix(vec3(0.17, 0.23, 0.17), vec3(0.32, 0.36, 0.23), large_grain);
-	vec3 dirt = mix(vec3(0.38, 0.29, 0.19), vec3(0.57, 0.43, 0.27), large_grain);
-	ALBEDO = mix(woods, dirt, trail) * (0.86 + fine_grain * 0.26);
+	float verge_noise = grain(map_position * 2.4);
+	float leaf_litter = smoothstep(0.44, 0.78, verge_noise) * (0.30 + 0.34 * large_grain);
+	vec3 woods = mix(vec3(0.155, 0.203, 0.154), vec3(0.29, 0.32, 0.20), large_grain);
+	woods = mix(woods, vec3(0.34, 0.28, 0.179), leaf_litter);
+	vec3 dirt = mix(vec3(0.32, 0.254, 0.184), vec3(0.49, 0.366, 0.240), large_grain);
+	float rut = 1.0 - smoothstep(0.035, 0.17, abs(abs(map_position.x - center) - 0.69));
+	dirt *= 1.0 - rut * (0.065 + 0.045 * verge_noise);
+	float gravel = smoothstep(0.71, 0.91, fine_grain) * (0.35 + 0.45 * verge_noise);
+	ALBEDO = mix(woods, dirt, trail) * (0.89 + fine_grain * 0.18)
+		+ vec3(0.10, 0.08, 0.055) * gravel * (0.42 + 0.58 * trail);
 	ROUGHNESS = 1.0;
 }

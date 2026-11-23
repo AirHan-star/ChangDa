@@ -1,15 +1,10 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/pickup.gd" id="Pickup"]
+
 [ext_resource type="FontFile" path="res://assets/relay_ui.otf" id="Font"]
 
-[sub_resource type="StandardMaterial3D" id="Bark"]
-albedo_color = Color(0.27, 0.18, 0.13, 1)
-roughness = 0.91
-
-[sub_resource type="StandardMaterial3D" id="Cut"]
-albedo_color = Color(0.87, 0.58, 0.30, 1)
-roughness = 0.91
+[ext_resource type="PackedScene" path="res://assets/world/firewood.glb" id="Bundle"]
 
 [sub_resource type="StandardMaterial3D" id="Amber"]
 albedo_color = Color(0.98, 0.64, 0.23, 1)
@@ -17,22 +12,6 @@ roughness = 0.91
 emission_enabled = true
 emission = Color(0.98, 0.64, 0.23, 1)
 emission_energy_multiplier = 0.68
-
-[sub_resource type="CylinderMesh" id="Mesh43"]
-material = SubResource("Bark")
-top_radius = 0.145
-bottom_radius = 0.18
-height = 0.84
-radial_segments = 8
-rings = 0
-
-[sub_resource type="CylinderMesh" id="Mesh44"]
-material = SubResource("Cut")
-top_radius = 0.137
-bottom_radius = 0.137
-height = 0.024
-radial_segments = 8
-rings = 0
 
 [sub_resource type="BoxMesh" id="Mesh45"]
 material = SubResource("Amber")
@@ -42,50 +21,7 @@ size = Vector3(0.2, 0.2, 0.2)
 script = ExtResource("Pickup")
 kind = 0
 
-[node name="Log0" type="MeshInstance3D" parent="."]
-position = Vector3(-0.27, 0.19, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut0B" type="MeshInstance3D" parent="."]
-position = Vector3(-0.27, 0.19, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut0A" type="MeshInstance3D" parent="."]
-position = Vector3(-0.27, 0.19, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Log1" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.38, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut1B" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.38, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut1A" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.38, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Log2" type="MeshInstance3D" parent="."]
-position = Vector3(0.27, 0.19, 0)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh43")
-
-[node name="Cut2B" type="MeshInstance3D" parent="."]
-position = Vector3(0.27, 0.19, -0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
-
-[node name="Cut2A" type="MeshInstance3D" parent="."]
-position = Vector3(0.27, 0.19, 0.423)
-rotation = Vector3(1.5708, 0, 0.16)
-mesh = SubResource("Mesh44")
+[node name="Bundle" parent="." instance=ExtResource("Bundle")]
 
 [node name="Marker" type="Node3D" parent="."]
 position = Vector3(0, 1.15, 0)
