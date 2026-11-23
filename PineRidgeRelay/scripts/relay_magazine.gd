@@ -46,9 +46,9 @@ func fill(inventory: SupplyRules) -> void:
 			inventory.pay({SupplyRules.Kind.AMMO: amount})
 
 
-func take_shot() -> bool:
+func take_shot(cadence := 1.0) -> bool:
 	if rounds == 0 or reload_left > 0 or shot_left > 0:
 		return false
 	rounds -= 1
-	shot_left = interval
+	shot_left = interval * cadence
 	return true

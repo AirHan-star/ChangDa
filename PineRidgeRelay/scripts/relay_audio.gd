@@ -2,7 +2,7 @@ class_name RelayAudio
 extends Node3D
 ## Routes world sounds to position-aware voices and local damage to a separate channel.
 
-enum Cue { ROCK, BLADE, SWING, REPORT, FOOTSTEP }
+enum Cue { ROCK, BLADE, SWING, REPORT, FOOTSTEP, CHOP }
 
 const CLIPS := [
 	[preload("res://assets/audio/rock_1.wav"), preload("res://assets/audio/rock_2.wav"), preload("res://assets/audio/rock_3.wav")],
@@ -10,9 +10,10 @@ const CLIPS := [
 	[preload("res://assets/audio/swing_1.wav"), preload("res://assets/audio/swing_2.wav")],
 	[preload("res://assets/audio/report.wav")],
 	[preload("res://assets/audio/step_1.wav"), preload("res://assets/audio/step_2.wav"), preload("res://assets/audio/step_3.wav")],
+	[preload("res://assets/audio/chop.wav")],
 ]
 const HURT := [preload("res://assets/audio/hurt_1.wav"), preload("res://assets/audio/hurt_2.wav")]
-const LEVELS := [-4.0, -3.0, -8.0, -2.0, -10.0]
+const LEVELS := [-4.0, -3.0, -8.0, -2.0, -10.0, -3.0]
 const VOICE_COUNT := 10
 
 var _voices: Array[AudioStreamPlayer3D] = []

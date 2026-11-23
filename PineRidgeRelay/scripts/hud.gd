@@ -108,6 +108,8 @@ func show_road(run: RoadRun) -> void:
 	if is_instance_valid(run.boss):
 		raid_label.text += "\n重装感染者  %d / %d" % [run.boss.health,run.boss_max_health]
 	raid_label.modulate = WARNING if is_instance_valid(run.boss) else Color.WHITE
+	if run.surge_left > 0:
+		raid_label.text += "\n热换弹 %.1f 秒" % run.surge_left
 	_xp_bar.max_value = run.experience_needed()
 	_xp_bar.value = run.experience
 

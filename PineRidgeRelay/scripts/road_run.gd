@@ -2,12 +2,20 @@ class_name RoadRun
 extends RefCounted
 
 enum Outcome { ACTIVE, WON, LOST }
-enum Upgrade { DAMAGE, RATE, EXP, MAGAZINE, RELOAD, FIELD_DRESSING, ARMOR }
+enum Upgrade {
+	DAMAGE, RATE, EXP, MAGAZINE, RELOAD, FIELD_DRESSING, ARMOR,
+	HEAVY_FOURTH, THROUGH_SHOT, RECYCLE, FIELD_MEDIC, RELOAD_SURGE,
+}
 
 const WAVE_LIMIT := 30
 const ACTIVE_CAP := 13
 const SHOT_RANGE := 68.0
 const SPAWN_LINE := 54.0
+const HEALTH_MULTIPLIER := 2
+const SURGE_SECONDS := 2.5
+const TACTICS := [
+	Upgrade.HEAVY_FOURTH, Upgrade.THROUGH_SHOT, Upgrade.RECYCLE, Upgrade.FIELD_MEDIC, Upgrade.RELOAD_SURGE,
+]
 const LANES := [-4.8, -2.5, 0.0, 2.5, 4.8]
 const PERKS := [
 	["加重弹芯", "每发伤害 +2"],
@@ -17,6 +25,11 @@ const PERKS := [
 	["熟练换弹", "换弹时间缩短 19%"],
 	["应急绷带", "立即恢复 40 点生命"],
 	["衬板护甲", "每次受击少扣 2 点生命"],
+	["校准节奏", "每第 4 发造成双倍伤害"],
+	["贯穿弹", "可贯穿一名敌人，对第二名造成半伤"],
+	["弹匣回填", "每击杀 3 名敌人，弹匣补入 2 发"],
+	["战地救护", "每击杀 5 名敌人，回复 9 点生命"],
+	["热换弹", "换弹后 2.5 秒内射击间隔缩短 28%"],
 ]
 
 var gun := RelayMagazine.new(true)
@@ -30,6 +43,11 @@ var boss_max_health := 0
 var choices: Array[int] = []
 var outcome := Outcome.ACTIVE
 var intermission := 3.0
+var surge_left := 0.0
+var _tactics: Array[int] = []
+var _round_sequence := 0
+var _recycled_kills := 0
+var _medic_kills := 0
 var _spawn_in := 0.0
 var _pending := 0
 var _spawned_this_wave := 0
@@ -65,7 +83,32 @@ func remaining() -> int:
 
 
 func standard_health() -> int:
-	return 3 + wave
+	return (3 + wave) * HEALTH_MULTIPLIER
+
+
+func brute_health() -> int:
+	return (70 + wave * 4) * HEALTH_MULTIPLIER
+
+
+func tick_weapon(delta: float, inventory: SupplyRules) -> void:
+	var was_reloading := gun.reload_left > 0.0
+	gun.tick(delta,inventory)
+	surge_left = maxf(0.0,surge_left-delta)
+	if was_reloading and gun.reload_left == 0.0 and _tactics.has(Upgrade.RELOAD_SURGE):
+		surge_left = SURGE_SECONDS
+
+
+func cadence_scale() -> float:
+	return 0.72 if surge_left > 0.0 else 1.0
+
+
+func shot_damage() -> int:
+	_round_sequence += 1
+	return gun.damage * 2 if _round_sequence % 4 == 0 and _tactics.has(Upgrade.HEAVY_FOURTH) else gun.damage
+
+
+func pierce_damage(damage: int) -> int:
+	return maxi(1,floori(damage*0.5)) if _tactics.has(Upgrade.THROUGH_SHOT) else 0
 
 
 func tick(delta: float) -> void:
@@ -118,7 +161,7 @@ func _spawn() -> bool:
 				continue
 			candidate.position = point
 			candidate.nest = -1
-			candidate.health = 70 + wave * 4 if brute else standard_health()
+			candidate.health = brute_health() if brute else standard_health()
 			candidate.road_hit = 25 + int(wave / 5.0) if brute else 11 + int(wave / 5.0)
 			candidate.travel_speed = 2.75 + wave * 0.04 if brute else 3.2 + wave * 0.045
 			candidate.elite_scale = 2.08 + wave * 0.005 if brute else 1.0
@@ -145,6 +188,7 @@ func _on_felled(enemy: RelayInfected) -> void:
 		boss = null
 	var base := 55 + wave * 3 if enemy.elite_scale > 1.0 else 9 + int(wave / 3.0)
 	experience += roundi(base * (1.0 + _xp_bonus * 0.25))
+	_kill_tactics()
 	if remaining() == 0:
 		if wave == WAVE_LIMIT:
 			outcome = Outcome.WON
@@ -152,6 +196,17 @@ func _on_felled(enemy: RelayInfected) -> void:
 			return
 		intermission = 2.7
 	_offer_promotion()
+
+
+func _kill_tactics() -> void:
+	if _tactics.has(Upgrade.RECYCLE):
+		_recycled_kills = (_recycled_kills + 1) % 3
+		if _recycled_kills == 0:
+			gun.rounds = mini(gun.capacity,gun.rounds+2)
+	if _tactics.has(Upgrade.FIELD_MEDIC):
+		_medic_kills = (_medic_kills + 1) % 5
+		if _medic_kills == 0:
+			vitals.heal(9)
 
 
 func _offer_promotion() -> void:
@@ -172,6 +227,9 @@ func _offer_promotion() -> void:
 		pool.append(Upgrade.FIELD_DRESSING)
 	if _armor < 10:
 		pool.append(Upgrade.ARMOR)
+	for tactic in TACTICS:
+		if not _tactics.has(tactic):
+			pool.append(tactic)
 	while not pool.is_empty() and choices.size() < 3:
 		var index := _rng.randi_range(0,pool.size()-1)
 		choices.append(pool.pop_at(index))
@@ -191,6 +249,7 @@ func choose(upgrade: int) -> bool:
 		Upgrade.RELOAD: gun.reload_time = maxf(0.46,gun.reload_time * 0.81)
 		Upgrade.FIELD_DRESSING: vitals.heal(40)
 		Upgrade.ARMOR: _armor += 2
+		_: _tactics.append(upgrade)
 	choices.clear()
 	_offer_promotion()
 	return true

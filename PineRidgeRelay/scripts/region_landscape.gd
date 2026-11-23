@@ -14,6 +14,7 @@ var _trees: Array[Mesh] = []
 var _tufts: Array[Mesh] = []
 var _stones: Array[Mesh] = []
 var _rng := RandomNumberGenerator.new()
+var trees: Array[MeshInstance3D] = []
 
 
 func _init(root: Node3D, surface: Callable, finishes: RegionFinishes) -> void:
@@ -61,7 +62,7 @@ func _rough_verge(arid: bool) -> void:
 			if not arid and i%3 != 1:
 				var tree := _plant(_trees, position, Vector3.ONE*_rng.randf_range(0.78,1.18))
 				if tree != null:
-					_collide_trunk(position)
+					trees.append(tree)
 			else:
 				_plant(_stones,position,Vector3.ONE*_rng.randf_range(1.33,2.48))
 		for i in range(42):
@@ -118,8 +119,7 @@ func _scrub_patch(flat: Vector2, wooded: bool) -> void:
 	_plant(_stones,at,Vector3(1.67,1.33,1.81))
 	if wooded and not _trees.is_empty():
 		var point: Vector3 = _surface.call(flat+Vector2(0.82,-0.9))
-		_plant(_trees,point,Vector3.ONE*0.68)
-		_collide_trunk(point)
+		trees.append(_plant(_trees,point,Vector3.ONE*0.68))
 	for i in range(7):
 		var patch := flat+Vector2(_rng.randf_range(-1.1,1.1),_rng.randf_range(-1.14,1.14))
 		_plant(_tufts,_surface.call(patch),Vector3.ONE*_rng.randf_range(0.79,1.32))
@@ -214,16 +214,6 @@ func _plant(pool: Array[Mesh], at: Vector3, stretch: Vector3) -> MeshInstance3D:
 	mesh.scale = stretch
 	mesh.rotation.y = _rng.randf_range(-PI,PI)
 	return mesh
-
-
-func _collide_trunk(at: Vector3) -> void:
-	var root := Node3D.new()
-	root.position = at+Vector3.UP*0.9
-	_root.add_child(root)
-	var trunk := CylinderShape3D.new()
-	trunk.radius = 0.22
-	trunk.height = 1.8
-	RelayGeometry.body(root,trunk)
 
 
 func _box(at: Vector3, size: Vector3, surface: String, color: Color, solid := false) -> MeshInstance3D:

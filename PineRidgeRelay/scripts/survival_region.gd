@@ -5,6 +5,7 @@ const CLEARING := preload("res://scenes/clearing.tscn")
 const STATION_FITTINGS := preload("res://assets/world/station_fittings.glb")
 const CRATE := preload("res://assets/world/supply_crate.glb")
 const DISTRICT_GROUND := preload("res://assets/regions/ground.gdshader")
+const CRATE_REFILL_SECONDS := 600
 const FENCE := Color("#74796d")
 const TERRACES := {
 	1: [Vector4(-1,2,5.0,4.5), Vector4(7.8,-13,4.4,4.0), Vector4(-8.4,15.2,4.3,4.0)],
@@ -50,12 +51,17 @@ var _finishes := RegionFinishes.new()
 var _materials: Dictionary = {}
 var _crate_seed := 0
 var _opened: Dictionary
+var _tree_deadlines: Dictionary
+var _crate_clock := -1
+var trees: Array[HarvestTree] = []
+var _crates: Array[RelaySite] = []
 
 
-func build(map_id: int, opened: Dictionary, rules: SupplyRules, crate_seed := 0) -> void:
+func build(map_id: int, opened: Dictionary, rules: SupplyRules, crate_seed: int, tree_deadlines: Dictionary) -> void:
 	id = map_id
 	_crate_seed = crate_seed
 	_opened = opened
+	_tree_deadlines = tree_deadlines
 	add_child(supplies)
 	add_child(ores)
 	add_child(infected)
@@ -65,6 +71,7 @@ func build(map_id: int, opened: Dictionary, rules: SupplyRules, crate_seed := 0)
 		lighting = ground.get_node("Lighting")
 		shelter = Vector3(0, 0.10, -9.7)
 		_station()
+		_station_trees()
 		_portal(Vector2(5.8, -4.8))
 	elif id == RelayStory.ROAD_MAP:
 		ground = Node3D.new()
@@ -85,13 +92,58 @@ func build(map_id: int, opened: Dictionary, rules: SupplyRules, crate_seed := 0)
 			1: _quarry()
 			2: _city()
 			3: _basin()
-		RegionLandscape.new(ground, surface, _finishes).decorate(id)
+		var landscape := RegionLandscape.new(ground,surface,_finishes)
+		landscape.decorate(id)
+		for i in range(landscape.trees.size()):
+			_register_tree(landscape.trees[i],str(i))
 		_portal(Vector2(0, -29))
 		shelter = arrival
-	for entry in sites:
-		if entry.role == RelaySite.Role.CRATE and opened.has(entry.key):
-			entry.mark_looted()
+	tick_crates(int(Time.get_unix_time_from_system()))
 	refresh_stations(rules)
+
+
+func tick_crates(now: int) -> void:
+	if now == _crate_clock:
+		return
+	_crate_clock = now
+	for crate in _crates:
+		var left := refill_left(crate,now)
+		if left == 0:
+			_opened.erase(crate.key)
+		crate.update_refill(left)
+
+
+func refill_left(crate: RelaySite, now: int) -> int:
+	return maxi(0,int(_opened.get(crate.key,0))-now)
+
+
+func start_refill(crate: RelaySite, now: int) -> void:
+	_opened[crate.key] = now + CRATE_REFILL_SECONDS
+	crate.update_refill(CRATE_REFILL_SECONDS)
+
+
+func tick_trees(world_time: float) -> void:
+	for tree in trees:
+		tree.tick(world_time)
+
+
+func _station_trees() -> void:
+	var woods := ground.get_node("Woods")
+	for visual in woods.get_node("Woodland").get_children():
+		if not visual is MeshInstance3D or not String(visual.name).begins_with("Pine"):
+			continue
+		var old_hull := woods.get_node_or_null(NodePath(visual.name))
+		if old_hull != null:
+			woods.remove_child(old_hull)
+			old_hull.queue_free()
+		_register_tree(visual,String(visual.name))
+
+
+func _register_tree(plant: MeshInstance3D, slot: String) -> void:
+	var tree := HarvestTree.new()
+	add_child(tree)
+	tree.configure("%d:%s" % [id,slot],_tree_deadlines,plant,_finishes)
+	trees.append(tree)
 
 
 func refresh_stations(rules: SupplyRules) -> void:
@@ -295,8 +347,10 @@ func _stock(room: RegionalBuilding, key: String, wood_label: String, contents: D
 		position.x = minf(position.x,dims.x/2-2.64)
 		if iron:
 			position = Vector3(0,RegionalBuilding.STOREY,-dims.y*0.23)
-	if _opened.has(room.code+"_iron_case"):
-		_opened[key] = true
+	var old_key := room.code+"_iron_case"
+	if _opened.has(old_key):
+		_opened[key] = maxi(int(_opened.get(key,0)),int(_opened[old_key]))
+		_opened.erase(old_key)
 	room.crates.append(_crate(room.to_global(position),key,"铁制补给箱" if iron else wood_label,contents,iron))
 
 
@@ -390,6 +444,8 @@ func _site(role: int, key: String, title: String, at: Vector3) -> RelaySite:
 	site.position = at
 	add_child(site)
 	sites.append(site)
+	if role == RelaySite.Role.CRATE:
+		_crates.append(site)
 	return site
 
 

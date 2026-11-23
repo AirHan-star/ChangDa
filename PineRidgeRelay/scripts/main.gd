@@ -18,6 +18,7 @@ var field: ResourceField
 var raid: NightRaid
 var opened: Dictionary = {}
 var depleted: Dictionary = {}
+var tree_deadlines: Dictionary = {}
 var cleared_nests: Dictionary = {}
 var magazine := RelayMagazine.new()
 var road: RoadRun
@@ -33,6 +34,7 @@ var _save_in := 20.0
 var _trigger_held := false
 var _last_health := SurvivalRules.PLAYER_MAX_HEALTH
 var _mining_target: MineableOre
+var _chop_target: HarvestTree
 var _mouse_before_panel := Input.MOUSE_MODE_CAPTURED
 var _restoring := true
 
@@ -104,7 +106,15 @@ func _restore(saved: Dictionary) -> void:
 	survival.player_health = clampi(int(saved.get("health", 100)), 0, 100)
 	_last_health = survival.player_health
 	opened = saved.get("opened", {})
+	var now := int(Time.get_unix_time_from_system())
+	for key in opened.keys():
+		var opened_at: Variant = opened[key]
+		if opened_at is bool and opened_at:
+			opened[key] = now + SurvivalRegion.CRATE_REFILL_SECONDS
+		elif int(opened_at) <= now:
+			opened.erase(key)
 	depleted = saved.get("depleted", {})
+	tree_deadlines = saved.get("trees",{})
 	cleared_nests = saved.get("cleared", {})
 
 
@@ -119,7 +129,7 @@ func _save(manual := false) -> void:
 		"day": survival.day, "night": survival.phase == SurvivalRules.Phase.NIGHT,
 		"remaining": survival.remaining, "elapsed": survival.elapsed,
 		"items": rules.inventory, "tools": rules.tools, "stations": rules.stations,
-		"opened": opened, "depleted": depleted, "cleared": cleared_nests,
+		"opened": opened, "depleted": depleted, "cleared": cleared_nests, "trees": tree_deadlines,
 		"crate_seed": _crate_seed, "magazine": magazine.rounds,
 	}
 	if not RelaySave.store(data):
@@ -142,7 +152,7 @@ func _load_region(map_id: int, point := Vector3.INF, arriving := false) -> void:
 	_map_id = map_id
 	region = SurvivalRegion.new()
 	add_child(region)
-	region.build(map_id, opened, rules, _crate_seed)
+	region.build(map_id,opened,rules,_crate_seed,tree_deadlines)
 	field = ResourceField.new(region, depleted)
 	raid = NightRaid.new(region, player, cleared_nests)
 	raid.enemy_struck.connect(func(at: Vector3): audio.play_at(RelayAudio.Cue.BLADE, at))
@@ -151,6 +161,7 @@ func _load_region(map_id: int, point := Vector3.INF, arriving := false) -> void:
 		destination = point
 	player.relocate(destination)
 	_mining_target = null
+	_chop_target = null
 	_input_queue.clear()
 	_refresh_display()
 
@@ -166,6 +177,8 @@ func _physics_process(delta: float) -> void:
 	survival.tick(delta)
 	var daylight := survival.phase == SurvivalRules.Phase.DAY
 	field.tick(survival.elapsed, daylight)
+	region.tick_crates(int(Time.get_unix_time_from_system()))
+	region.tick_trees(survival.elapsed)
 	if not daylight:
 		raid.tick(delta, survival)
 	if survival.player_health == 0:
@@ -339,7 +352,7 @@ func _tick_road(delta: float) -> void:
 	road.tick(delta)
 	if player.global_position.y < -4.0:
 		player.relocate(region.shelter)
-	road.gun.tick(delta,rules)
+	road.tick_weapon(delta,rules)
 	hud.show_road(road)
 	_refresh_magazine()
 	_sync_road_dialog()
@@ -452,6 +465,8 @@ func _interact(target: Node3D) -> void:
 		hud.notify("%s +%d" % [SupplyRules.ITEMS[target.kind], multiplier], 1.1)
 	elif target is MineableOre:
 		_begin_mine(target)
+	elif target is HarvestTree:
+		_begin_chop(target)
 	elif target is RelaySite:
 		_interact_site(target)
 
@@ -459,12 +474,14 @@ func _interact(target: Node3D) -> void:
 func _interact_site(site: RelaySite) -> void:
 	match site.role:
 		RelaySite.Role.CRATE:
-			if opened.has(site.key):
-				hud.notify("这个箱子已经搜空")
+			var now := int(Time.get_unix_time_from_system())
+			var refill := region.refill_left(site,now)
+			if refill > 0:
+				site.update_refill(refill)
+				hud.notify(site.cooldown_text())
 				return
-			opened[site.key] = true
+			region.start_refill(site,now)
 			rules.add(site.contents)
-			site.mark_looted()
 			var items := PackedStringArray()
 			for kind in site.contents:
 				items.append("%s +%d" % [SupplyRules.ITEMS[kind], site.contents[kind]])
@@ -574,6 +591,22 @@ func _begin_mine(ore: MineableOre) -> void:
 		audio.play_at(RelayAudio.Cue.SWING, player.global_position + Vector3.UP, -3.0)
 
 
+func _begin_chop(tree: HarvestTree) -> void:
+	if tree.is_cut():
+		hud.notify(tree.regrow_text())
+		return
+	var axe := SupplyRules.Tool.IRON_AXE
+	if not rules.has_tool(axe):
+		hud.notify("砍树需要铁斧")
+		return
+	var direction := tree.global_position - player.global_position
+	direction.y = 0
+	if player.start_swing(axe,direction.normalized()):
+		_chop_target = tree
+		_equip(axe)
+		audio.play_at(RelayAudio.Cue.SWING,player.global_position+Vector3.UP,-3.0)
+
+
 func _attack(target: Node3D) -> void:
 	var tool := player.equipped
 	if tool < 0 or player.is_swinging():
@@ -582,6 +615,8 @@ func _attack(target: Node3D) -> void:
 		_fire()
 	elif target is MineableOre and rules.mining_power(tool) > 0:
 		_begin_mine(target)
+	elif target is HarvestTree and tool == SupplyRules.Tool.IRON_AXE:
+		_begin_chop(target)
 	elif player.start_swing(tool, -player.orbit.global_basis.z):
 		_mining_target = null
 		audio.play_at(RelayAudio.Cue.SWING, player.global_position + Vector3.UP)
@@ -589,6 +624,16 @@ func _attack(target: Node3D) -> void:
 
 func _tool_contact(tool: int, facing: Vector3) -> void:
 	if survival.player_health == 0:
+		return
+	var tree := _chop_target
+	_chop_target = null
+	if is_instance_valid(tree) and tool == SupplyRules.Tool.IRON_AXE:
+		if not tree.is_cut() and _reachable(tree.hit_point(),MINE_RANGE,tree):
+			audio.play_at(RelayAudio.Cue.CHOP,tree.hit_point())
+			if tree.chop(survival.elapsed):
+				rules.add({SupplyRules.Kind.WOOD:HarvestTree.WOOD_YIELD})
+				hud.notify("木料 +%d" % HarvestTree.WOOD_YIELD)
+				_save()
 		return
 	if tool in [SupplyRules.Tool.STONE_SWORD, SupplyRules.Tool.IRON_AXE]:
 		if raid.strike(player.global_position + Vector3.UP*0.95, facing, 2.55, 3 if tool == SupplyRules.Tool.IRON_AXE else 2):
@@ -626,7 +671,7 @@ func _fire() -> void:
 	var gun := _current_magazine()
 	if player.panel_open or (road != null and (road.outcome != RoadRun.Outcome.ACTIVE or not road.choices.is_empty())):
 		return
-	if not gun.take_shot():
+	if not gun.take_shot(road.cadence_scale() if road != null else 1.0):
 		if gun.rounds == 0 and gun.reload_left <= 0 and gun.shot_left <= 0 and not gun.start_reload(rules):
 			hud.notify("没有后备弹药")
 			gun.shot_left = 0.40
@@ -636,6 +681,8 @@ func _fire() -> void:
 	var start := camera.project_ray_origin(middle)
 	var axis := camera.project_ray_normal(middle)
 	var reach := RoadRun.SHOT_RANGE if road != null else 36.0
+	var damage := road.shot_damage() if road != null else gun.damage
+	var through := road.pierce_damage(damage) if road != null else 0
 	var aim := start + axis * (reach + 3.0)
 	var ray := PhysicsRayQueryParameters3D.create(start, aim, 13, [player.get_rid()])
 	var space := get_world_3d().direct_space_state
@@ -649,9 +696,9 @@ func _fire() -> void:
 	if not blocked.is_empty():
 		impact = blocked.position
 	elif (aim - muzzle).dot(axis) > 0.05:
-		impact = raid.shoot(muzzle,(aim-muzzle).normalized(),gun.damage,reach)
+		impact = raid.shoot(muzzle,(aim-muzzle).normalized(),damage,reach,through)
 	audio.play_at(RelayAudio.Cue.REPORT, muzzle)
-	_shot_effect(muzzle, impact)
+	_shot_effect(muzzle,impact,Color("#ff9e58") if damage > gun.damage else Color("#ffd19b"))
 	_refresh_magazine()
 
 
@@ -659,7 +706,7 @@ func _refresh_magazine() -> void:
 	hud.gear.show_magazine(_current_magazine(),rules.carried(SupplyRules.Kind.AMMO),player.equipped == SupplyRules.Tool.CARBINE)
 
 
-func _shot_effect(muzzle: Vector3, impact: Vector3) -> void:
+func _shot_effect(muzzle: Vector3, impact: Vector3, tint: Color) -> void:
 	var tracer := MeshInstance3D.new()
 	var segment := BoxMesh.new()
 	var distance := muzzle.distance_to(impact)
@@ -667,7 +714,7 @@ func _shot_effect(muzzle: Vector3, impact: Vector3) -> void:
 		return
 	segment.size = Vector3(0.018, 0.020, distance)
 	tracer.mesh = segment
-	tracer.material_override = RelayGeometry.finish(Color("#ffd19b"), 2.4)
+	tracer.material_override = RelayGeometry.finish(tint,2.4)
 	region.add_child(tracer)
 	tracer.position = muzzle.lerp(impact, 0.5)
 	if absf((impact - muzzle).normalized().dot(Vector3.UP)) < 0.999:
@@ -698,7 +745,22 @@ func _near_target() -> Node3D:
 		if next < distance and _reachable(point, reach, target as StaticBody3D):
 			best = target
 			distance = next
-	return best
+	if best != null:
+		return best
+	return _near_tree()
+
+
+func _near_tree() -> HarvestTree:
+	var nearest: HarvestTree
+	var best_distance := MINE_RANGE * MINE_RANGE
+	var origin := player.global_position + Vector3.UP * 0.88
+	for tree in region.trees:
+		var point := tree.hit_point()
+		var distance := origin.distance_squared_to(point)
+		if distance < best_distance and _reachable(point,MINE_RANGE,tree):
+			nearest = tree
+			best_distance = distance
+	return nearest
 
 
 func _reachable(point: Vector3, range_limit: float, resource: StaticBody3D) -> bool:
@@ -718,9 +780,15 @@ func _prompt(target: Node3D) -> String:
 		if power < target.required_power():
 			return "%s · %s" % [target.mineral_name(), "需要石镐或铁镐" if target.required_power() > 1 else "需要木镐"]
 		return "按 E 开采%s · 还需 %d 次" % [target.mineral_name(), ceili(float(target.hardness) / power)]
+	if target is HarvestTree:
+		if target.is_cut():
+			return target.regrow_text()
+		if not rules.has_tool(SupplyRules.Tool.IRON_AXE):
+			return "松树 · 需要铁斧"
+		return "按 E 砍树 · 还需 %d 次" % target.chops_left
 	if target is RelaySite:
-		if target.role == RelaySite.Role.CRATE and opened.has(target.key):
-			return "%s · 已搜空" % target.title
+		if target.role == RelaySite.Role.CRATE and target.refill_seconds > 0:
+			return target.cooldown_text()
 		return "按 E 查看%s" % target.title
 	return "按 F 选择传送去处" if _near_portal() else ""
 

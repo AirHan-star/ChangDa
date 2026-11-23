@@ -126,16 +126,28 @@ func strike(origin: Vector3, facing: Vector3, reach: float, damage: int) -> bool
 	return true
 
 
-func shoot(origin: Vector3, direction: Vector3, damage := 4, reach := 36.0) -> Vector3:
+func shoot(origin: Vector3, direction: Vector3, damage := 4, reach := 36.0, through := 0) -> Vector3:
 	var end := origin + direction * reach
-	var query := PhysicsRayQueryParameters3D.create(origin, end, 13, [_player.get_rid()])
-	var hit := _region.get_world_3d().direct_space_state.intersect_ray(query)
+	var query := PhysicsRayQueryParameters3D.create(origin,end,13,[_player.get_rid()])
+	var space := _region.get_world_3d().direct_space_state
+	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return end
 	var enemy := hit.get("collider") as RelayInfected
-	if enemy != null and active.has(enemy):
-		_hit(enemy, damage)
-	return hit.position
+	if enemy == null or not active.has(enemy):
+		return hit.position
+	_hit(enemy,damage)
+	if through <= 0:
+		return hit.position
+	# Exclude only the first infected; walls still stop the continuation.
+	query.exclude = [_player.get_rid(),enemy.get_rid()]
+	var next := space.intersect_ray(query)
+	if next.is_empty():
+		return end
+	var second := next.get("collider") as RelayInfected
+	if second != null and active.has(second):
+		_hit(second,through)
+	return next.position
 
 
 func _hit(enemy: RelayInfected, damage: int) -> void:
