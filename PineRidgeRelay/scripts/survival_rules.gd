@@ -22,7 +22,7 @@ var _hurt_grace := 0.0
 
 func tick(delta: float) -> void:
 	elapsed += delta
-	_hurt_grace = maxf(0.0, _hurt_grace - delta)
+	advance_hit_grace(delta)
 	remaining -= delta
 	if remaining > 0.0:
 		return
@@ -34,6 +34,18 @@ func tick(delta: float) -> void:
 		day += 1
 		remaining += DAY_SECONDS
 	phase_changed.emit()
+
+
+func advance_hit_grace(delta: float) -> void:
+	_hurt_grace = maxf(0.0,_hurt_grace-delta)
+
+
+func heal(amount: int) -> int:
+	var restored := mini(amount,PLAYER_MAX_HEALTH-player_health)
+	if restored > 0:
+		player_health += restored
+		player_health_changed.emit()
+	return restored
 
 
 func damage_player(amount: int) -> bool:
@@ -48,10 +60,7 @@ func damage_player(amount: int) -> bool:
 func eat_ration(inventory: SupplyRules) -> int:
 	if player_health == 0 or player_health >= PLAYER_MAX_HEALTH or not inventory.consume_ration():
 		return 0
-	var healed := mini(RATION_HEAL, PLAYER_MAX_HEALTH - player_health)
-	player_health += healed
-	player_health_changed.emit()
-	return healed
+	return heal(RATION_HEAL)
 
 
 func recover() -> void:

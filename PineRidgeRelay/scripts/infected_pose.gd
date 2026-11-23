@@ -104,3 +104,43 @@ func _arm(index: int, torso: Transform3D, step: float, chasing: bool,
 		wrist = wrist.lerp(Vector3(side * 0.31, 1.20, 0.41), hit * 0.69)
 	wrist += Vector3(side * stagger_weight * 0.16, stagger_weight * 0.12, -stagger_weight * 0.18)
 	_solve_limb(_arms[index], torso, wrist, Vector3(side * 0.54, -0.52, -0.46))
+
+
+func fit_road_armor() -> void:
+	var finishes := RegionFinishes.new()
+	var plates := Color("#828d82")
+	var rims := Color("#a56d51")
+	var cloth := Color("#545c55")
+	var chest := _armor_mount("Chest")
+	var face := _armor_mount("Head")
+	finishes.box(chest,Vector3(0,1.20,0.155),Vector3(0.43,0.33,0.10),"iron",plates)
+	finishes.box(chest,Vector3(0,1.25,-0.134),Vector3(0.35,0.35,0.12),"iron",cloth)
+	for x in [-0.175,0.175]:
+		for y in [1.07,1.34]:
+			finishes.box(chest,Vector3(x,y,0.216),Vector3(0.047,0.044,0.028),"iron",rims)
+	for section in range(3):
+		finishes.box(chest,Vector3(0,1.025+section*0.086,0.207),Vector3(0.33,0.043,0.029),"iron",cloth)
+	for side in [-1.0,1.0]:
+		var arm := _armor_mount("ArmR" if side > 0.0 else "ArmL")
+		var shell := CylinderMesh.new()
+		shell.radial_segments = 6
+		shell.height = 0.17
+		shell.top_radius = 0.134
+		shell.bottom_radius = 0.10
+		var shoulder := RelayGeometry.mesh(arm,shell,Vector3(side*0.28,1.31,0.015),finishes.paint("iron",rims))
+		shoulder.rotation.z = side * 0.26
+		finishes.box(arm,Vector3(side*0.323,1.29,0.077),Vector3(0.113,0.07,0.084),"iron",plates)
+	finishes.box(face,Vector3(0,1.708,0.015),Vector3(0.211,0.066,0.201),"iron",cloth)
+	finishes.box(face,Vector3(0,1.65,0.119),Vector3(0.203,0.064,0.044),"iron",rims)
+	for side in [-1.0,1.0]:
+		finishes.box(face,Vector3(side*0.092,1.603,0.10),Vector3(0.036,0.128,0.071),"iron",plates)
+
+
+func _armor_mount(bone: String) -> Node3D:
+	var attachment := BoneAttachment3D.new()
+	attachment.bone_name = bone
+	_rig.add_child(attachment)
+	var frame := Node3D.new()
+	frame.transform = _rig.get_bone_global_rest(_rig.find_bone(bone)).affine_inverse()
+	attachment.add_child(frame)
+	return frame

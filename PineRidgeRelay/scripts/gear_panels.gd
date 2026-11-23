@@ -7,8 +7,11 @@ signal equip_requested(tool: int)
 signal ration_requested
 signal travel_requested(map_id: int)
 signal station_requested(station: int)
+signal upgrade_requested(upgrade: int)
+signal road_leave_requested
+signal road_resume_requested
 
-enum PanelKind { NONE, CRAFT, BAG, TRAVEL, JOURNAL }
+enum PanelKind { NONE, CRAFT, BAG, TRAVEL, JOURNAL, ROAD }
 
 const RESOURCE_NAMES := SupplyRules.ITEMS
 const TOOL_NAMES := SupplyRules.TOOLS
@@ -40,6 +43,15 @@ var _reading: Label
 var _craft_context: Label
 var _recipe_rows: Array[Control] = []
 var _ammo: Label
+var _slots: HBoxContainer
+var _keys: HBoxContainer
+var _road_options: VBoxContainer
+var _road_message: Label
+var _road_choices: Array[Button] = []
+var _road_ids: Array[int] = []
+var _road_leave: Button
+var _road_resume: Button
+var _close: Button
 var _quick_counts: Array[Label] = []
 var _bag_counts: Array[Label] = []
 var _tools: Array[Button] = []
@@ -63,7 +75,9 @@ func show_panel(panel: int) -> void:
 	_bag.visible = panel == PanelKind.BAG
 	_travel.visible = panel == PanelKind.TRAVEL
 	_journal.visible = panel == PanelKind.JOURNAL
-	_title.text = ["", "合成", "背包", "中继传送", "余讯记录"][panel]
+	_road_options.visible = panel == PanelKind.ROAD
+	_close.visible = panel != PanelKind.ROAD
+	_title.text = ["", "合成", "背包", "中继传送", "余讯记录", "断线公路"][panel]
 
 
 func refresh(rules: SupplyRules, equipped_tool: int) -> void:
@@ -79,8 +93,35 @@ func refresh(rules: SupplyRules, equipped_tool: int) -> void:
 		tool.disabled = not owned
 		tool.add_theme_stylebox_override(&"normal", _equipped if equipped_tool == i else _normal)
 		tool.tooltip_text = "已装备" if equipped_tool == i else ("点击装备" if owned else "未拥有")
-	_ammo.text = "弹药  %d" % rules.carried(SupplyRules.Kind.AMMO)
-	_ammo.visible = equipped_tool == SupplyRules.Tool.CARBINE
+
+
+func show_magazine(gun: RelayMagazine, reserve: int, equipped: bool) -> void:
+	_ammo.visible = equipped
+	if not equipped:
+		return
+	var ammunition := "∞" if gun.infinite_reserve else str(reserve)
+	_ammo.text = "%02d / %02d  ·  后备 %s" % [gun.rounds,gun.capacity,ammunition]
+	if gun.reload_left > 0:
+		_ammo.text += "\n换弹中  %.1f 秒" % gun.reload_left
+
+
+func road_mode(enabled: bool) -> void:
+	_slots.visible = not enabled
+	_keys.visible = not enabled
+
+
+func road_dialog(title: String, text: String, upgrades: Array[int], can_resume: bool, leave: String) -> void:
+	_title.text = title
+	_road_message.text = text
+	_road_ids = upgrades.duplicate()
+	for i in range(_road_choices.size()):
+		var button := _road_choices[i]
+		button.visible = i < _road_ids.size()
+		if button.visible:
+			var perk: Array = RoadRun.PERKS[_road_ids[i]]
+			button.text = "%s    ·    %s" % [perk[0],perk[1]]
+	_road_resume.visible = can_resume
+	_road_leave.text = leave
 
 
 func craft_context(station: int, rules: SupplyRules, available: Callable, hint: String) -> void:
@@ -96,8 +137,10 @@ func craft_context(station: int, rules: SupplyRules, available: Callable, hint: 
 func travel_context(story: RelayStory, current: int) -> void:
 	for i in range(_travel_options.size()):
 		var button := _travel_options[i]
-		button.disabled = i == current or not story.unlocked(i)
+		button.disabled = i == current or (i != RelayStory.ROAD_MAP and not story.unlocked(i))
 		var status := "当前位置" if i == current else ("前往" if story.unlocked(i) else "主线未开放")
+		if i == RelayStory.ROAD_MAP:
+			status = "挑战 30 波 · 临时装备"
 		button.text = "%s     ·     %s" % [RelayStory.MAP_NAMES[i], status]
 
 
@@ -122,6 +165,8 @@ func _build_shortcuts() -> void:
 	dock.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ammo = _label("弹药", 18)
 	_ammo.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_ammo.add_theme_color_override(&"font_outline_color",Color("#0c1615"))
+	_ammo.add_theme_constant_override(&"outline_size",6)
 	_ammo.hide()
 	dock.add_child(_ammo)
 	var quantities := HBoxContainer.new()
@@ -129,6 +174,7 @@ func _build_shortcuts() -> void:
 	quantities.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	quantities.add_theme_constant_override(&"separation", 5)
 	dock.add_child(quantities)
+	_slots = quantities
 	_quick_counts.resize(RESOURCE_NAMES.size())
 	for kind in [SupplyRules.Kind.WOOD, SupplyRules.Kind.STONE, SupplyRules.Kind.CAN]:
 		var slot := PanelContainer.new()
@@ -150,6 +196,7 @@ func _build_shortcuts() -> void:
 	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	keys.add_theme_constant_override(&"separation", 5)
 	dock.add_child(keys)
+	_keys = keys
 	_shortcut(keys, "Tab", preload("res://assets/icons/craft.png"), "合成", PanelKind.CRAFT)
 	_shortcut(keys, "B", preload("res://assets/icons/bag.png"), "背包", PanelKind.BAG)
 
@@ -186,10 +233,10 @@ func _build_overlay() -> void:
 	_title = _label("合成", 25)
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(_title)
-	var close := _button("Esc  关闭")
-	close.custom_minimum_size = Vector2(98, 36)
-	close.pressed.connect(func(): panel_requested.emit(PanelKind.NONE))
-	header.add_child(close)
+	_close = _button("Esc  关闭")
+	_close.custom_minimum_size = Vector2(98,36)
+	_close.pressed.connect(func(): panel_requested.emit(PanelKind.NONE))
+	header.add_child(_close)
 	_craft_list = VBoxContainer.new()
 	_craft_list.add_theme_constant_override(&"separation", 8)
 	body.add_child(_craft_list)
@@ -213,7 +260,37 @@ func _build_overlay() -> void:
 		_travel_options.append(destination)
 	_build_recipes()
 	_build_bag()
+	_build_road_panel(body)
 	show_panel(PanelKind.NONE)
+
+
+func _build_road_panel(body: VBoxContainer) -> void:
+	_road_options = VBoxContainer.new()
+	_road_options.add_theme_constant_override(&"separation",12)
+	body.add_child(_road_options)
+	_road_message = _label("",17)
+	_road_message.custom_minimum_size.x = 492
+	_road_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_road_options.add_child(_road_message)
+	for index in range(3):
+		var button := _button("")
+		button.custom_minimum_size.y = 50
+		button.pressed.connect(func():
+			if index < _road_ids.size():
+				upgrade_requested.emit(_road_ids[index]))
+		_road_choices.append(button)
+		_road_options.add_child(button)
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override(&"separation",8)
+	_road_options.add_child(actions)
+	_road_resume = _button("继续挑战")
+	_road_resume.custom_minimum_size = Vector2(132,40)
+	_road_resume.pressed.connect(func(): road_resume_requested.emit())
+	actions.add_child(_road_resume)
+	_road_leave = _button("返回生存")
+	_road_leave.custom_minimum_size = Vector2(132,40)
+	_road_leave.pressed.connect(func(): road_leave_requested.emit())
+	actions.add_child(_road_leave)
 
 
 func _build_recipes() -> void:

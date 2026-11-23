@@ -2,6 +2,7 @@ class_name NightRaid
 extends RefCounted
 
 signal enemy_struck(point: Vector3)
+signal enemy_felled(enemy: RelayInfected)
 
 const INFECTED_SCENE := preload("res://scenes/infected.tscn")
 const DETECT_RANGE := 8.0
@@ -98,6 +99,10 @@ func _sees_player(enemy: RelayInfected) -> bool:
 	return _region.get_world_3d().direct_space_state.intersect_ray(ray).is_empty()
 
 
+func has_clear_strike(enemy: RelayInfected) -> bool:
+	return enemy.global_position.distance_squared_to(_player.global_position) < 12.0 and _sees_player(enemy)
+
+
 func strike(origin: Vector3, facing: Vector3, reach: float, damage: int) -> bool:
 	var target: RelayInfected
 	var best := reach * reach
@@ -121,23 +126,25 @@ func strike(origin: Vector3, facing: Vector3, reach: float, damage: int) -> bool
 	return true
 
 
-func shoot(origin: Vector3, direction: Vector3) -> Vector3:
-	var end := origin + direction * 36.0
+func shoot(origin: Vector3, direction: Vector3, damage := 4, reach := 36.0) -> Vector3:
+	var end := origin + direction * reach
 	var query := PhysicsRayQueryParameters3D.create(origin, end, 13, [_player.get_rid()])
 	var hit := _region.get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return end
 	var enemy := hit.get("collider") as RelayInfected
 	if enemy != null and active.has(enemy):
-		_hit(enemy, 4)
+		_hit(enemy, damage)
 	return hit.position
 
 
 func _hit(enemy: RelayInfected, damage: int) -> void:
 	enemy_struck.emit(enemy.global_position + Vector3.UP)
 	if enemy.take_hit(damage):
-		_cleared[_key(enemy.nest)] = true
+		if enemy.nest >= 0:
+			_cleared[_key(enemy.nest)] = true
 		active.erase(enemy)
+		enemy_felled.emit(enemy)
 
 
 func _spawn(home: Vector3, index: int) -> bool:

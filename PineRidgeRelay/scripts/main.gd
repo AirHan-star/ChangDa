@@ -19,12 +19,18 @@ var raid: NightRaid
 var opened: Dictionary = {}
 var depleted: Dictionary = {}
 var cleared_nests: Dictionary = {}
+var magazine := RelayMagazine.new()
+var road: RoadRun
+var _crate_seed := 0
+var _road_return: Dictionary
+var _road_exit_prompt := false
+var _road_last_health := 100
 
 var _map_id := 0
 var _station := SupplyRules.Station.HAND
 var _input_queue: Array[StringName] = []
 var _save_in := 20.0
-var _fire_in := 0.0
+var _trigger_held := false
 var _last_health := SurvivalRules.PLAYER_MAX_HEALTH
 var _mining_target: MineableOre
 var _mouse_before_panel := Input.MOUSE_MODE_CAPTURED
@@ -41,6 +47,9 @@ func _ready() -> void:
 	hud.gear.equip_requested.connect(_equip)
 	hud.gear.ration_requested.connect(_eat)
 	hud.gear.travel_requested.connect(_travel)
+	hud.gear.upgrade_requested.connect(_road_upgrade)
+	hud.gear.road_leave_requested.connect(_leave_road)
+	hud.gear.road_resume_requested.connect(_resume_road)
 	player.tool_impact.connect(_tool_contact)
 	player.survivor.foot_planted.connect(func(point: Vector3, heavy: bool):
 		audio.play_at(RelayAudio.Cue.FOOTSTEP, point, 1.0 if heavy else -3.0))
@@ -80,6 +89,10 @@ func _validate_saved_position() -> void:
 
 func _restore(saved: Dictionary) -> void:
 	rules.restore(saved)
+	_crate_seed = int(saved.get("crate_seed",randi()))
+	magazine.rounds = clampi(int(saved.get("magazine",0)),0,RelayMagazine.STANDARD_CAPACITY)
+	if not saved.is_empty() and not saved.has("magazine") and rules.has_tool(SupplyRules.Tool.CARBINE):
+		magazine.fill(rules)
 	story.stage = clampi(int(saved.get("stage", 0)), 0, RelayStory.STEPS.size())
 	var saved_map := int(saved.get("map", 0))
 	_map_id = saved_map if story.unlocked(saved_map) else 0
@@ -96,7 +109,7 @@ func _restore(saved: Dictionary) -> void:
 
 
 func _save(manual := false) -> void:
-	if _restoring or not is_instance_valid(region):
+	if _restoring or road != null or not is_instance_valid(region):
 		return
 	_save_in = 20.0
 	var data := {
@@ -107,6 +120,7 @@ func _save(manual := false) -> void:
 		"remaining": survival.remaining, "elapsed": survival.elapsed,
 		"items": rules.inventory, "tools": rules.tools, "stations": rules.stations,
 		"opened": opened, "depleted": depleted, "cleared": cleared_nests,
+		"crate_seed": _crate_seed, "magazine": magazine.rounds,
 	}
 	if not RelaySave.store(data):
 		hud.notify("无法写入存档")
@@ -121,13 +135,14 @@ func _notification(what: int) -> void:
 
 
 func _load_region(map_id: int, point := Vector3.INF, arriving := false) -> void:
+	_trigger_held = false
 	if is_instance_valid(region):
 		remove_child(region)
 		region.queue_free()
 	_map_id = map_id
 	region = SurvivalRegion.new()
 	add_child(region)
-	region.build(map_id, opened, rules)
+	region.build(map_id, opened, rules, _crate_seed)
 	field = ResourceField.new(region, depleted)
 	raid = NightRaid.new(region, player, cleared_nests)
 	raid.enemy_struck.connect(func(at: Vector3): audio.play_at(RelayAudio.Cue.BLADE, at))
@@ -141,7 +156,12 @@ func _load_region(map_id: int, point := Vector3.INF, arriving := false) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if _restoring or survival.player_health == 0:
+	if _restoring:
+		return
+	if road != null:
+		_tick_road(delta)
+		return
+	if survival.player_health == 0:
 		return
 	survival.tick(delta)
 	var daylight := survival.phase == SurvivalRules.Phase.DAY
@@ -153,8 +173,9 @@ func _physics_process(delta: float) -> void:
 	if player.global_position.y < -5.0:
 		player.relocate(region.shelter)
 	_maybe_autosave(delta)
-	_fire_in = maxf(0.0, _fire_in - delta)
+	magazine.tick(delta,rules)
 	_refresh_display()
+	_refresh_magazine()
 	if player.panel_open or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		_input_queue.clear()
 		hud.set_prompt("")
@@ -176,6 +197,7 @@ func _physics_process(delta: float) -> void:
 	_input_queue.clear()
 	if player.panel_open:
 		return
+	_repeat_fire()
 	if is_instance_valid(target) and target.is_queued_for_deletion():
 		target = null
 	hud.set_prompt(_prompt(target))
@@ -188,6 +210,11 @@ func _maybe_autosave(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if event.is_action_released(&"attack"):
+		_trigger_held = false
+	if road != null:
+		_road_input(event)
+		return
 	if survival.player_health == 0:
 		return
 	if event.is_action_pressed(&"open_crafting"):
@@ -200,6 +227,12 @@ func _input(event: InputEvent) -> void:
 		_set_panel(GearPanels.PanelKind.NONE)
 	elif event.is_action_pressed(&"eat_ration"):
 		_eat()
+	elif event.is_action_pressed(&"reload"):
+		if player.equipped == SupplyRules.Tool.CARBINE:
+			if not player.panel_open:
+				_reload()
+		else:
+			_save(true)
 	elif event.is_action_pressed(&"save_game"):
 		_save(true)
 	else:
@@ -210,14 +243,24 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if survival.player_health == 0 or player.panel_open or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
+	if road != null:
+		if event.is_action_pressed(&"attack"):
+			_trigger_held = true
+			_input_queue.append(&"attack")
+			get_viewport().set_input_as_handled()
+		return
 	for action in [&"travel", &"interact", &"attack", &"craft_wood_pick", &"craft_stone_pick", &"craft_stone_sword"]:
 		if event.is_action_pressed(action):
+			if action == &"attack":
+				_trigger_held = true
 			_input_queue.append(action)
 			get_viewport().set_input_as_handled()
 			return
 
 
 func _request_panel(panel: int) -> void:
+	if road != null:
+		return
 	if panel == hud.gear.active_panel:
 		_set_panel(GearPanels.PanelKind.NONE)
 		return
@@ -233,6 +276,7 @@ func _request_panel(panel: int) -> void:
 
 
 func _set_panel(panel: int) -> void:
+	_trigger_held = false
 	if panel == GearPanels.PanelKind.NONE:
 		if player.panel_open:
 			Input.mouse_mode = _mouse_before_panel
@@ -256,12 +300,138 @@ func _near_portal() -> bool:
 func _travel(map_id: int) -> void:
 	if hud.gear.active_panel != GearPanels.PanelKind.TRAVEL or not _near_portal():
 		return
+	if map_id == RelayStory.ROAD_MAP:
+		_enter_road()
+		return
 	if map_id == _map_id or not story.unlocked(map_id):
 		return
 	_set_panel(GearPanels.PanelKind.NONE)
 	_load_region(map_id, Vector3.INF, true)
 	_save()
 	hud.notify(RelayStory.MAP_NAMES[map_id])
+
+
+func _enter_road() -> void:
+	_road_return = {"map":_map_id,"point":player.global_position,"tool":player.equipped,
+		"facing":player.orbit.rotation.y,"pitch":player.arm.rotation.x}
+	_save()
+	_set_panel(GearPanels.PanelKind.NONE)
+	_load_region(RelayStory.ROAD_MAP,Vector3.INF,true)
+	road = RoadRun.new(region,player,raid)
+	road.vitals.player_health_changed.connect(_road_health_changed)
+	_road_last_health = 100
+	_road_exit_prompt = false
+	player.orbit.rotation.y = PI
+	player.arm.rotation.x = 0.0
+	player.model.rotation.y = 0.0
+	player.equip(SupplyRules.Tool.CARBINE)
+	hud.road_mode(true)
+	hud.show_player_health(road.vitals.player_health)
+	hud.aim.show()
+	hud.show_road(road)
+	_refresh_magazine()
+	hud.notify("临时卡宾枪已就绪 · 无限后备弹药")
+
+
+func _tick_road(delta: float) -> void:
+	if player.panel_open:
+		return
+	road.tick(delta)
+	if player.global_position.y < -4.0:
+		player.relocate(region.shelter)
+	road.gun.tick(delta,rules)
+	hud.show_road(road)
+	_refresh_magazine()
+	_sync_road_dialog()
+	if player.panel_open:
+		_input_queue.clear()
+		return
+	if _input_queue.has(&"attack"):
+		_fire()
+	_input_queue.clear()
+	_repeat_fire()
+	_sync_road_dialog()
+	if not player.panel_open:
+		hud.set_prompt("按 F 打开离场确认" if _near_portal() else "")
+
+
+func _road_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"release_mouse") and road.outcome == RoadRun.Outcome.ACTIVE:
+		if _road_exit_prompt:
+			_resume_road()
+		else:
+			_road_exit_prompt = true
+			_sync_road_dialog()
+	elif event.is_action_pressed(&"travel") and _near_portal() and road.outcome == RoadRun.Outcome.ACTIVE:
+		_road_exit_prompt = true
+		_sync_road_dialog()
+	elif event.is_action_pressed(&"reload") and not player.panel_open:
+		_reload()
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
+func _sync_road_dialog() -> void:
+	if road.outcome != RoadRun.Outcome.ACTIVE:
+		_set_panel(GearPanels.PanelKind.ROAD)
+		var win := road.outcome == RoadRun.Outcome.WON
+		var title := "公路挑战胜利" if win else "公路挑战失败"
+		hud.gear.road_dialog(title,"波次 %d / %d  ·  等级 %d  ·  击杀 %d" % [
+			road.wave,RoadRun.WAVE_LIMIT,road.level,road.kills],[],false,"返回生存")
+	elif _road_exit_prompt:
+		_set_panel(GearPanels.PanelKind.ROAD)
+		hud.gear.road_dialog("离开断线公路","离开将结束本次挑战，回到进入前的位置。",[],true,"结束并返回")
+	elif not road.choices.is_empty():
+		_set_panel(GearPanels.PanelKind.ROAD)
+		hud.gear.road_dialog("等级 %d · 选择强化" % road.level,
+			"选一项，效果持续到本局结束。",road.choices,false,"结束并返回")
+
+
+func _road_upgrade(upgrade: int) -> void:
+	if road == null or _road_exit_prompt or not road.choose(upgrade):
+		return
+	_set_panel(GearPanels.PanelKind.NONE)
+	hud.show_road(road)
+	_refresh_magazine()
+	_sync_road_dialog()
+
+
+func _resume_road() -> void:
+	if road != null and road.outcome == RoadRun.Outcome.ACTIVE:
+		_road_exit_prompt = false
+		_set_panel(GearPanels.PanelKind.NONE)
+		_sync_road_dialog()
+
+
+func _leave_road() -> void:
+	if road == null or hud.gear.active_panel != GearPanels.PanelKind.ROAD:
+		return
+	road.vitals.player_health_changed.disconnect(_road_health_changed)
+	road.dispose()
+	road = null
+	_road_exit_prompt = false
+	_set_panel(GearPanels.PanelKind.NONE)
+	_load_region(_road_return["map"],_road_return["point"])
+	player.orbit.rotation.y = _road_return["facing"]
+	player.arm.rotation.x = _road_return["pitch"]
+	player.model.rotation.y = player.orbit.rotation.y + PI
+	player.equip(_road_return["tool"])
+	hud.road_mode(false)
+	_health_changed()
+	_refresh_bag()
+	_save()
+	hud.notify("已返回生存地图")
+
+
+func _road_health_changed() -> void:
+	var points := road.vitals.player_health
+	if points < _road_last_health:
+		player.survivor.flinch()
+		hud.flash_damage()
+		audio.play_damage()
+	_road_last_health = points
+	hud.show_player_health(points)
 
 
 func _read_journal(hint := "") -> void:
@@ -370,6 +540,8 @@ func _craft(id: int) -> void:
 
 func _equip(tool: int) -> void:
 	if rules.has_tool(tool):
+		if tool != SupplyRules.Tool.CARBINE:
+			magazine.reload_left = 0
 		player.equip(tool)
 		_refresh_bag()
 
@@ -435,18 +607,36 @@ func _tool_contact(tool: int, facing: Vector3) -> void:
 		hud.notify("%s +%d" % [SupplyRules.ITEMS[ore.kind], ore.yield_count()])
 
 
+func _current_magazine() -> RelayMagazine:
+	return road.gun if road != null else magazine
+
+
+func _reload() -> void:
+	_current_magazine().start_reload(rules)
+	_refresh_magazine()
+
+
+func _repeat_fire() -> void:
+	if (_trigger_held and not player.panel_open and player.equipped == SupplyRules.Tool.CARBINE
+			and not player.is_swinging() and Input.is_action_pressed(&"attack")):
+		_fire()
+
+
 func _fire() -> void:
-	if _fire_in > 0:
+	var gun := _current_magazine()
+	if player.panel_open or (road != null and (road.outcome != RoadRun.Outcome.ACTIVE or not road.choices.is_empty())):
 		return
-	_fire_in = 0.38
-	if not rules.pay({SupplyRules.Kind.AMMO: 1}):
-		hud.notify("没有弹药")
+	if not gun.take_shot():
+		if gun.rounds == 0 and gun.reload_left <= 0 and gun.shot_left <= 0 and not gun.start_reload(rules):
+			hud.notify("没有后备弹药")
+			gun.shot_left = 0.40
 		return
 	var camera := get_viewport().get_camera_3d()
 	var middle := get_viewport().get_visible_rect().size * 0.5
 	var start := camera.project_ray_origin(middle)
 	var axis := camera.project_ray_normal(middle)
-	var aim := start + axis * 38.0
+	var reach := RoadRun.SHOT_RANGE if road != null else 36.0
+	var aim := start + axis * (reach + 3.0)
 	var ray := PhysicsRayQueryParameters3D.create(start, aim, 13, [player.get_rid()])
 	var space := get_world_3d().direct_space_state
 	var hit := space.intersect_ray(ray)
@@ -459,9 +649,14 @@ func _fire() -> void:
 	if not blocked.is_empty():
 		impact = blocked.position
 	elif (aim - muzzle).dot(axis) > 0.05:
-		impact = raid.shoot(muzzle, (aim - muzzle).normalized())
+		impact = raid.shoot(muzzle,(aim-muzzle).normalized(),gun.damage,reach)
 	audio.play_at(RelayAudio.Cue.REPORT, muzzle)
 	_shot_effect(muzzle, impact)
+	_refresh_magazine()
+
+
+func _refresh_magazine() -> void:
+	hud.gear.show_magazine(_current_magazine(),rules.carried(SupplyRules.Kind.AMMO),player.equipped == SupplyRules.Tool.CARBINE)
 
 
 func _shot_effect(muzzle: Vector3, impact: Vector3) -> void:
@@ -574,6 +769,7 @@ func _health_changed() -> void:
 
 func _refresh_bag() -> void:
 	hud.gear.refresh(rules, player.equipped)
+	_refresh_magazine()
 	hud.gear.set_ration_available(survival.player_health > 0 and survival.player_health < 100
 		and rules.carried(SupplyRules.Kind.CAN) > 0)
 	hud.aim.visible = not player.panel_open and player.equipped == SupplyRules.Tool.CARBINE
@@ -582,6 +778,8 @@ func _refresh_bag() -> void:
 
 
 func _refresh_display() -> void:
+	if _map_id == RelayStory.ROAD_MAP:
+		return
 	region.lighting.update_light(survival.phase, survival.remaining)
 	hud.show_survival(survival, _map_id, raid.active.size(), raid.chasing_count)
 	hud.show_story(story)
@@ -603,3 +801,7 @@ func _guide() -> void:
 	var turn := atan2(relative.x, -relative.z)
 	var segment := posmod(roundi(turn * 4.0 / PI), 8)
 	hud.route.text += "\n%s  %s  %d 米" % [DIRECTIONS[segment], destination.title, roundi(horizontal.length())]
+
+func _exit_tree() -> void:
+	if road != null:
+		road.dispose()

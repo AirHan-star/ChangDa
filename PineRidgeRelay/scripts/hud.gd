@@ -32,10 +32,18 @@ var _toast_time := 0.0
 var _flash_time := 0.0
 var _critical_target := 0.0
 var _critical_amount := 0.0
+var _xp_bar := ProgressBar.new()
+@onready var _controls: Label = $Screen/Controls
+@onready var _original_controls := _controls.text
 
 
 func _ready() -> void:
 	$Screen/Result/Card/Content/Restart.pressed.connect(func(): recover_requested.emit())
+	_xp_bar.custom_minimum_size.y = 5
+	_xp_bar.show_percentage = false
+	_xp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_xp_bar.hide()
+	$Screen/Survival/Content.add_child(_xp_bar)
 
 
 func _process(delta: float) -> void:
@@ -88,6 +96,26 @@ func show_survival(state: SurvivalRules, map_id: int, active: int, chasing: int)
 	else:
 		raid_label.text = "感染者 %d  ·  在附近徘徊" % active
 	raid_label.modulate = WARNING if chasing > 0 else Color.WHITE
+
+
+func show_road(run: RoadRun) -> void:
+	mission.text = "断线公路 · 肉鸽挑战"
+	route.text = "走到掩体间拉开距离，完成 30 波"
+	phase_label.text = "波次 %02d / %d" % [run.wave,RoadRun.WAVE_LIMIT]
+	phase_label.modulate = ACCENT
+	region_label.text = "等级 %d  ·  经验 %d / %d" % [run.level,run.experience,run.experience_needed()]
+	raid_label.text = "下一波 %.1f 秒" % run.intermission if run.intermission > 0 else "剩余感染者 %d  ·  击杀 %d" % [run.remaining(),run.kills]
+	if is_instance_valid(run.boss):
+		raid_label.text += "\n重装感染者  %d / %d" % [run.boss.health,run.boss_max_health]
+	raid_label.modulate = WARNING if is_instance_valid(run.boss) else Color.WHITE
+	_xp_bar.max_value = run.experience_needed()
+	_xp_bar.value = run.experience
+
+
+func road_mode(enabled: bool) -> void:
+	_xp_bar.visible = enabled
+	_controls.text = "按住左键连发  ·  右键瞄准  ·  R 换弹\nEsc 打开退出菜单" if enabled else _original_controls
+	gear.road_mode(enabled)
 
 
 func set_prompt(message: String) -> void:

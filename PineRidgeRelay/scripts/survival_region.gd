@@ -48,10 +48,14 @@ var shelter: Vector3
 var buildings: Array[RegionalBuilding] = []
 var _finishes := RegionFinishes.new()
 var _materials: Dictionary = {}
+var _crate_seed := 0
+var _opened: Dictionary
 
 
-func build(map_id: int, opened: Dictionary, rules: SupplyRules) -> void:
+func build(map_id: int, opened: Dictionary, rules: SupplyRules, crate_seed := 0) -> void:
 	id = map_id
+	_crate_seed = crate_seed
+	_opened = opened
 	add_child(supplies)
 	add_child(ores)
 	add_child(infected)
@@ -62,6 +66,15 @@ func build(map_id: int, opened: Dictionary, rules: SupplyRules) -> void:
 		shelter = Vector3(0, 0.10, -9.7)
 		_station()
 		_portal(Vector2(5.8, -4.8))
+	elif id == RelayStory.ROAD_MAP:
+		ground = Node3D.new()
+		add_child(ground)
+		_sky()
+		lighting.update_light(SurvivalRules.Phase.DAY, 12.0)
+		lighting.environment.fog_density = 0.006
+		RoadLandscape.new(ground, _finishes)
+		_portal(Vector2(0,-44))
+		shelter = arrival
 	else:
 		ground = Node3D.new()
 		add_child(ground)
@@ -100,15 +113,15 @@ func refresh_stations(rules: SupplyRules) -> void:
 
 
 func deposits() -> Array:
-	return DEPOSITS[id]
+	return [] if id == RelayStory.ROAD_MAP else DEPOSITS[id]
 
 
 func nests() -> Array:
-	return NESTS[id]
+	return [] if id == RelayStory.ROAD_MAP else NESTS[id]
 
 
 func surface(flat: Vector2) -> Vector3:
-	if id == 0 or id == 2:
+	if id == 0 or id == 2 or id == RelayStory.ROAD_MAP:
 		return Vector3(flat.x, 0, flat.y)
 	var origin := (flat / 2.4).floor() * 2.4
 	var fraction := (flat - origin) / 2.4
@@ -272,17 +285,19 @@ func _structure(code: String, title: String, flat: Vector2, dimensions: Vector2,
 	return room
 
 
-func _stock(room: RegionalBuilding, wood_key: String, wood_label: String, contents: Dictionary) -> void:
-	var dimensions := room.footprint
-	var wood := Vector3(dimensions.x*0.26,0,-dimensions.y*0.235)
+func _stock(room: RegionalBuilding, key: String, wood_label: String, contents: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _crate_seed ^ hash(room.code)
+	var iron := rng.randi_range(0,1) == 1
+	var dims := room.footprint
+	var position := Vector3(dims.x * 0.26,0,-dims.y * 0.235)
 	if room.floors == 2:
-		wood.x = minf(wood.x,room.footprint.x/2-2.64)
-	room.crates.append(_crate(room.to_global(wood),wood_key,wood_label,contents,false))
-	var iron := Vector3(-dimensions.x*0.27,0,dimensions.y*0.27)
-	if room.floors == 2:
-		iron = Vector3(0.0,RegionalBuilding.STOREY,-dimensions.y*0.23)
-	room.crates.append(_crate(room.to_global(iron),room.code+"_iron_case","铁制补给箱",
-		{SupplyRules.Kind.CAN: 1, SupplyRules.Kind.STONE: 2},true))
+		position.x = minf(position.x,dims.x/2-2.64)
+		if iron:
+			position = Vector3(0,RegionalBuilding.STOREY,-dims.y*0.23)
+	if _opened.has(room.code+"_iron_case"):
+		_opened[key] = true
+	room.crates.append(_crate(room.to_global(position),key,"铁制补给箱" if iron else wood_label,contents,iron))
 
 
 func _portal(flat: Vector2) -> void:

@@ -15,6 +15,9 @@ var _wander_in := 0.0
 var sight_lost_for := 0.0
 var last_seen_player := Vector3.ZERO
 var health := 3
+var travel_speed := SPEED
+var elite_scale := 1.0
+var road_hit := 14
 var _player_attack_in := PLAYER_WINDUP
 var _fall_time := 0.0
 var _fall_side := 1.0
@@ -27,7 +30,21 @@ var _detour_side := 1.0
 func _ready() -> void:
 	_wander_target = home
 	_fall_side = -1.0 if randi() % 2 == 0 else 1.0
+	if elite_scale > 1.0:
+		_fit_elite()
 	set_physics_process(false)
+
+
+func _fit_elite() -> void:
+	var hull: CollisionShape3D = $Collision
+	var capsule := hull.shape.duplicate() as CapsuleShape3D
+	capsule.height *= elite_scale
+	capsule.radius *= elite_scale
+	hull.shape = capsule
+	hull.position.y = capsule.height * 0.5
+	model.scale = Vector3.ONE * elite_scale
+	model.fit_road_armor()
+	RelayGeometry.label(self,"重装感染者",Vector3.UP*(1.93*elite_scale),Color("#ed9868"))
 
 
 func return_home() -> void:
@@ -62,10 +79,11 @@ func pursue(delta: float, may_strike: bool) -> bool:
 	var height := absf(offset.y)
 	offset.y = 0.0
 	var distance := offset.length()
-	var in_reach := may_strike and distance <= PLAYER_REACH and height < 0.95
+	var reach := PLAYER_REACH * elite_scale
+	var in_reach := may_strike and distance <= reach and height < 0.95 * elite_scale
 	var facing := atan2(offset.x, offset.z) if not offset.is_zero_approx() else rotation.y
-	var travel := Vector3.ZERO if in_reach else offset.normalized() * maxf(distance - 0.86, 0.0)
-	_move(delta, travel, facing)
+	var travel := Vector3.ZERO if in_reach else offset.normalized() * maxf(distance - reach*0.82, 0.0)
+	_move(delta, travel, facing, travel_speed)
 
 	_player_attack_in = maxf(0.0, _player_attack_in - delta)
 	if not in_reach:

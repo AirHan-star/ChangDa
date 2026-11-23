@@ -1,7 +1,8 @@
 class_name RelayStory
 extends RefCounted
 
-const MAP_NAMES := ["松岭气象站", "灰脊采石场", "沉钟旧城", "黄烟盆地"]
+const ROAD_MAP := 4
+const MAP_NAMES := ["松岭气象站", "灰脊采石场", "沉钟旧城", "黄烟盆地", "断线公路"]
 const STEPS := [
 	["第一章 · 停在凌晨的电报", "在气象站内调查通讯台", "station_radio",
 		"撤离广播在凌晨三点断了。通讯台里还留着一条工单：灰脊采石场有通往旧城的中继坐标。采石场传送已开放。"],
@@ -17,7 +18,7 @@ var stage := 0
 
 
 func unlocked(map_id: int) -> bool:
-	return map_id >= 0 and map_id < MAP_NAMES.size() and map_id <= stage
+	return map_id >= 0 and map_id < ROAD_MAP and map_id <= stage
 
 
 func objective() -> String:
