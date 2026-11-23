@@ -42,18 +42,17 @@ func _limb(upper: String, lower: String, end: String) -> Limb:
 	return Limb.new(_rig, [_rig.find_bone(upper), _rig.find_bone(lower), _rig.find_bone(end)], _rest)
 
 
-func _hip_limit(leg: Limb, ankle: Vector3, pelvis_z: float) -> float:
-	var rest_hip := _rest[leg.upper].origin
-	var depth := ankle.z - rest_hip.z - pelvis_z
-	var lateral := ankle.x - rest_hip.x
+func _leg_height_margin(leg: Limb, ankle: Vector3, pelvis: Transform3D) -> float:
+	var offset := ankle - pelvis * _rest[leg.upper].origin
 	var reach := leg.upper_length + leg.lower_length - 0.007
-	return ankle.y - rest_hip.y + sqrt(maxf(0.0, reach * reach - depth * depth - lateral * lateral))
+	var horizontal_squared := Vector2(offset.x, offset.z).length_squared()
+	return offset.y + sqrt(maxf(0.0, reach * reach - horizontal_squared))
 
 
-func _pose_leg(leg: Limb, ankle: Vector3, pitch: float, pelvis: Vector3) -> void:
-	_solve_limb(leg, Transform3D(Basis.IDENTITY, pelvis), ankle, Vector3.BACK)
+func _pose_leg(leg: Limb, ankle: Vector3, pitch: float, pelvis: Transform3D, toe_yaw := 0.0) -> void:
+	_solve_limb(leg, pelvis, ankle, pelvis.basis * Vector3.BACK)
 	var foot := _rig.get_bone_global_pose(leg.end)
-	foot.basis = Basis(Vector3.RIGHT, pitch) * _rest[leg.end].basis
+	foot.basis = Basis.from_euler(Vector3(pitch, toe_yaw, 0.0)) * _rest[leg.end].basis
 	_rig.set_bone_global_pose(leg.end, foot)
 
 

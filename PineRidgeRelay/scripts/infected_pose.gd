@@ -58,12 +58,13 @@ func animate(delta: float, speed: float, chasing: bool, windup: float, recovery:
 	var hips := Vector3(sin(_cycle * TAU) * 0.036 * _gait,
 		-0.041 - draw * 0.065 - hit * 0.095 - _fall * 0.16,
 		0.015 - draw * 0.065 + hit * 0.095)
-	hips.y = minf(hips.y, minf(
-		_hip_limit(_legs[0], ankle_l - Vector3(hips.x, 0, 0), hips.z),
-		_hip_limit(_legs[1], ankle_r - Vector3(hips.x, 0, 0), hips.z)))
-	_rig.set_bone_global_pose(_hip, Transform3D(_rest[_hip].basis, _rest[_hip].origin + hips))
-	_pose_leg(_legs[0], ankle_l, left.z, hips)
-	_pose_leg(_legs[1], ankle_r, right.z, hips)
+	var pelvis := Transform3D(Basis.IDENTITY, hips)
+	pelvis.origin.y += minf(0.0, minf(
+		_leg_height_margin(_legs[0], ankle_l, pelvis), _leg_height_margin(_legs[1], ankle_r, pelvis)))
+	hips = pelvis.origin
+	_rig.set_bone_global_pose(_hip, pelvis * _rest[_hip])
+	_pose_leg(_legs[0], ankle_l, left.z, pelvis)
+	_pose_leg(_legs[1], ankle_r, right.z, pelvis)
 
 	var pulse := sin(_time * 4.0)
 	var twist := 0.10 * cos(_cycle * TAU) * _gait + (hit * 0.30 - draw * 0.36) * _strike_side
