@@ -37,7 +37,11 @@ var _swing_elapsed := 0.0
 var _swing_duration := 0.0
 var _pickup_turn_left := 0.0
 var _pickup_facing := 0.0
+var reload_progress := -1.0
 var _fire_left := 0.0
+var _magazine_mesh: MeshInstance3D
+var _magazine_rest := Transform3D.IDENTITY
+var _fire_weight := 0.0
 var _aim_blend := 0.0
 var _shoulder_clearance := PhysicsShapeQueryParameters3D.new()
 
@@ -46,6 +50,8 @@ func _ready() -> void:
 	for tool in [RelayEquipment.iron_pick(), RelayEquipment.axe(), RelayEquipment.carbine()]:
 		held_tool.add_child(tool)
 		_tool_models.append(tool)
+	_magazine_mesh = _tool_models[SupplyRules.Tool.CARBINE].get_node("DetachableMagazine")
+	_magazine_rest = _magazine_mesh.transform
 	_show_tool()
 	arm.add_excluded_object(get_rid())
 	_shoulder_clearance.shape = arm.shape
@@ -92,8 +98,12 @@ func _physics_process(delta: float) -> void:
 	var aiming := is_aiming()
 	_update_aim_camera(aiming, delta)
 	_fire_left = maxf(0.0, _fire_left - delta)
+	var previous_facing := model.rotation.y
 	var progress := 0.0
 	var impact := false
+	var flat_velocity := get_real_velocity()
+	var vertical := flat_velocity.y
+	flat_velocity.y = 0.0
 	if _swing_tool >= 0:
 		var previous := _swing_elapsed / _swing_duration
 		_swing_elapsed = minf(_swing_elapsed + delta, _swing_duration)
@@ -101,21 +111,45 @@ func _physics_process(delta: float) -> void:
 		impact = previous < IMPACT_FRACTION and progress >= IMPACT_FRACTION
 	elif aiming:
 		model.rotation.y = lerp_angle(model.rotation.y, orbit.rotation.y + PI, minf(18.0 * delta, 1.0))
+	elif _pickup_turn_left > 0.0 and direction.length_squared() < 0.02:
+		model.rotation.y = lerp_angle(model.rotation.y, _pickup_facing, minf(15.0 * delta, 1.0))
 	elif _fire_left <= 0.0 and direction.length_squared() > 0.01:
-		model.rotation.y = lerp_angle(model.rotation.y, atan2(direction.x, direction.z), minf(12.0 * delta, 1.0))
-	elif _pickup_turn_left > 0.0:
-		model.rotation.y = lerp_angle(model.rotation.y, _pickup_facing, minf(14.0 * delta, 1.0))
+		var heading := atan2(direction.x, direction.z)
+		if flat_velocity.length_squared() > 0.18 and flat_velocity.normalized().dot(direction.normalized()) > 0.40:
+			heading = atan2(flat_velocity.x, flat_velocity.z)
+		var stiffness := 15.0 if is_on_floor() else 7.0
+		model.rotation.y = lerp_angle(model.rotation.y, heading, 1.0 - exp(-stiffness * delta))
 	_pickup_turn_left = maxf(0.0, _pickup_turn_left - delta)
-	var motion := Vector2(get_real_velocity().x, get_real_velocity().z).length()
+	var turn_rate := angle_difference(previous_facing, model.rotation.y) / delta
+	var speed_now := flat_velocity.length()
+	var local_motion := model.global_basis.inverse() * flat_velocity
 	var visual_tool := _swing_tool if is_swinging() else equipped
-	survivor.update_pose(delta, motion, is_on_floor(), visual_tool, progress, is_swinging(),
-		get_real_velocity().y, _fire_left / RECOIL_TIME, arm.rotation.x * smoothstep(0.0, 1.0, _aim_blend))
+	var aim_amount := smoothstep(0.0, 1.0, _aim_blend)
+	_fire_weight = move_toward(_fire_weight, 0.7 if _fire_left > 0.0 else 0.0, delta * 5.8)
+	var raised := maxf(aim_amount, _fire_weight)
+	survivor.update_pose(delta, speed_now, is_on_floor(), visual_tool, progress, is_swinging(),
+		vertical, _fire_left / RECOIL_TIME, arm.rotation.x * aim_amount,
+		local_motion, turn_rate, raised, reload_progress)
 	held_tool.transform = survivor.grip_transform()
+	_pose_magazine()
 	if impact:
 		tool_impact.emit(_swing_tool, _swing_facing)
 	if progress >= 1.0:
 		_swing_tool = -1
 		_show_tool()
+
+
+func _pose_magazine() -> void:
+	_magazine_mesh.visible = true
+	_magazine_mesh.transform = _magazine_rest
+	if equipped != SupplyRules.Tool.CARBINE or reload_progress < 0.24 or reload_progress > 0.78:
+		return
+	if reload_progress > 0.45 and reload_progress < 0.56:
+		_magazine_mesh.hide()
+		return
+	var attached := smoothstep(0.24, 0.32, reload_progress) * (1.0 - smoothstep(0.71, 0.78, reload_progress))
+	var palm := held_tool.transform.affine_inverse() * survivor.magazine_transform()
+	_magazine_mesh.transform = _magazine_rest.interpolate_with(palm, attached)
 
 
 func is_aiming() -> bool:
@@ -154,11 +188,15 @@ func play_pickup(location: Vector3) -> void:
 	if Vector2(offset.x, offset.z).length_squared() > 0.02:
 		_pickup_facing = atan2(offset.x, offset.z)
 		_pickup_turn_left = SurvivorPose.PICKUP_TIME
-	survivor.pick_up()
+	survivor.pick_up(Vector2(offset.x, offset.z).length())
 
 
 func equip(tool: int) -> void:
 	equipped = tool
+	if equipped != SupplyRules.Tool.CARBINE:
+		reload_progress = -1.0
+		_fire_weight = 0.0
+		_fire_left = 0.0
 	_show_tool()
 
 
@@ -183,9 +221,12 @@ func start_swing(tool: int, facing: Vector3) -> bool:
 func begin_fire(direction: Vector3) -> Vector3:
 	model.rotation.y = atan2(direction.x, direction.z)
 	var pitch := asin(direction.y) if is_aiming() else 0.0
-	survivor.update_pose(0.0, 0.0, is_on_floor(), SupplyRules.Tool.CARBINE, 0.0, false, 0.0, 0.0, pitch)
+	var speed := Vector2(velocity.x, velocity.z).length()
+	survivor.update_pose(0.0, speed, is_on_floor(), SupplyRules.Tool.CARBINE,
+		0.0, false, velocity.y, 0.0, pitch, Vector3.ZERO, 0.0, 1.0)
 	held_tool.transform = survivor.grip_transform()
 	_fire_left = RECOIL_TIME
+	_fire_weight = 1.0
 	return (_tool_models[SupplyRules.Tool.CARBINE].get_node("Muzzle") as Node3D).global_position
 
 
@@ -194,7 +235,10 @@ func relocate(point: Vector3) -> void:
 	velocity = Vector3.ZERO
 	_swing_tool = -1
 	_fire_left = 0.0
+	_fire_weight = 0.0
+	reload_progress = -1.0
 	_pickup_turn_left = 0.0
+	survivor.reset_motion()
 	reset_aim_camera()
 	_show_tool()
 

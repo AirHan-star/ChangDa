@@ -42,7 +42,8 @@ static func carbine() -> Node3D:
 	RelayGeometry.box(node, Vector3(0,0.22,0.014), Vector3(0.080,0.22,0.15), wood)
 	RelayGeometry.box(node, Vector3(0,0.34,0.043), Vector3(0.089,0.042,0.20), grip)
 	RelayGeometry.box(node, Vector3(0,-0.21,-0.070), Vector3(0.076,0.18,0.10), wood)
-	RelayGeometry.box(node, Vector3(0,-0.065,0.072), Vector3(0.061,0.112,0.09), grip)
+	var magazine := RelayGeometry.box(node, Vector3(0, -0.065, 0.077), Vector3(0.061, 0.112, 0.10), grip)
+	magazine.name = "DetachableMagazine"
 	RelayGeometry.box(node, Vector3(0,-0.49,0.016), Vector3(0.044,0.29,0.048), steel)
 	RelayGeometry.box(node, Vector3(0,-0.552,-0.032), Vector3(0.022,0.04,0.035), steel)
 	var muzzle := Marker3D.new()

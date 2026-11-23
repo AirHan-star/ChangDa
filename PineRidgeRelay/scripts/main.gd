@@ -911,7 +911,10 @@ func _fire() -> void:
 
 
 func _refresh_magazine() -> void:
-	hud.gear.show_magazine(_current_magazine(),_ammo_inventory().carried(SupplyRules.Kind.AMMO),player.equipped == SupplyRules.Tool.CARBINE)
+	var gun := _current_magazine()
+	var equipped := player.equipped == SupplyRules.Tool.CARBINE
+	player.reload_progress = 1.0 - gun.reload_left / gun.reload_time if equipped and gun.reload_left > 0.0 else -1.0
+	hud.gear.show_magazine(gun, _ammo_inventory().carried(SupplyRules.Kind.AMMO), equipped)
 
 
 func _shot_effect(muzzle: Vector3, impact: Vector3, tint: Color) -> void:

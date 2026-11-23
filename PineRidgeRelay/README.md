@@ -2,9 +2,13 @@
 
 用 Godot 4 和 GDScript 制作的第三人称 3D 离线单人生存游戏。撤离广播中断后，从松岭气象站出发，沿线追查最后收到的电报。
 
-## 试玩
+## 主角候选版
 
-下载并解压 [Windows x64 应用包](dist/PineRidgeRelay-Windows-x86_64.zip)，双击 `PineRidgeRelay.exe`。游戏资源已嵌入，支持离线运行。
+下载并解压 [Windows x64 试玩包](dist/PineRidgeRelay-PlayerPreview-Windows-x86_64.zip)，双击 `PineRidgeRelay-PlayerPreview.exe`。候选版使用独立存档目录 `PineRidgeRelay-PlayerPreview`，首次启动从新存档开始。
+
+在气象站外用 WASD 走路和转向，再按 Shift 冲刺、空格跳跃，对比起步、跟脚和落地。拾取木料时看躯干和重心变化。装备镐、斧和剑后用左键对比各自的挥动，再用鼠标右键和 R 体验卡宾枪抬枪及换弹。
+
+[同机位建模对比](review/player-preview-comparison.jpg) · [动作录像](review/player-preview-motion.mp4)
 
 | 按键 | 操作 |
 | --- | --- |
@@ -45,4 +49,4 @@
 
 用 Godot **4.6.3** 导入本目录的 `project.godot`，按 **F5** 运行。主场景为 `scenes/main.tscn`。分区与资源点配置在 `scripts/survival_region.gd`，主线在 `scripts/relay_story.gd`，背包和配方在 `scripts/supply_rules.gd`。
 
-安装对应版本的 Godot 导出模板后，用 **Windows Desktop** 预设导出 `dist/PineRidgeRelay.exe`。将 EXE 与当前 ZIP 内的许可证一起打包，替换应用包。
+安装对应版本的 Godot 导出模板后，用 **Windows Desktop** 预设导出 `dist/PineRidgeRelay-PlayerPreview.exe`。将 EXE 与当前 ZIP 内的许可证一起打包，替换应用包。
