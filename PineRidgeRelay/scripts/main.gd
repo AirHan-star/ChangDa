@@ -18,6 +18,7 @@ const RECIPES := {
 @onready var lighting: RelayLighting = $Clearing/Lighting
 @onready var hud: RelayHUD = $HUD
 
+var audio := RelayAudio.new()
 var rules := SupplyRules.new()
 var survival := SurvivalRules.new()
 var field: ResourceField
@@ -31,8 +32,14 @@ var _mouse_before_panel := Input.MOUSE_MODE_CAPTURED
 
 
 func _ready() -> void:
+	add_child(audio)
 	field = ResourceField.new(supplies, ores, rules)
 	raid = NightRaid.new($Clearing/Infected, gate, player)
+	raid.growled.connect(func(point: Vector3): audio.play_at(RelayAudio.Cue.GROWL, point))
+	raid.gate_struck.connect(func(point: Vector3): audio.play_at(RelayAudio.Cue.GATE, point))
+	raid.enemy_struck.connect(func(point: Vector3): audio.play_at(RelayAudio.Cue.BLADE, point))
+	player.survivor.foot_planted.connect(func(point: Vector3, heavy: bool):
+		audio.play_at(RelayAudio.Cue.FOOTSTEP, point, 1.0 if heavy else -3.0))
 	rules.changed.connect(_refresh_inventory)
 	survival.phase_changed.connect(_phase_changed)
 	survival.player_health_changed.connect(_refresh_player_health)
@@ -207,6 +214,7 @@ func _begin_mine(ore: MineableOre, tool: int) -> bool:
 	if not player.start_swing(tool, direction.normalized()):
 		return false
 	_mining_target = ore
+	audio.play_at(RelayAudio.Cue.SWING, player.global_position + Vector3.UP, -3.0)
 	return true
 
 
@@ -217,6 +225,7 @@ func _attack(target: Node3D) -> void:
 	if tool != SupplyRules.Tool.STONE_SWORD and target is MineableOre:
 		_begin_mine(target, tool)
 	elif player.start_swing(tool, -player.orbit.global_basis.z):
+		audio.play_at(RelayAudio.Cue.SWING, player.global_position + Vector3.UP)
 		_mining_target = null
 		if tool == SupplyRules.Tool.STONE_SWORD:
 			_swing_in = SWING_COOLDOWN
@@ -237,6 +246,7 @@ func _on_tool_impact(tool: int, facing: Vector3) -> void:
 		return
 	if not _within_reach(ore.global_position + Vector3.UP * 0.45, MINE_RANGE, ore):
 		return
+	audio.play_at(RelayAudio.Cue.ROCK, ore.global_position + Vector3.UP * 0.50)
 	if ore.strike(rules.mining_power(tool)):
 		rules.add_stone(MineableOre.YIELD)
 		field.remove(ore)
@@ -330,8 +340,12 @@ func _refresh_inventory() -> void:
 
 func _refresh_player_health() -> void:
 	var points := survival.player_health
-	if points > 0 and points < _last_player_health:
-		hud.notify("受到攻击 · 生命 -%d" % (_last_player_health - points), 1.1)
+	if points < _last_player_health:
+		hud.flash_damage()
+		audio.play_damage()
+		player.survivor.flinch()
+		if points > 0:
+			hud.notify("受到攻击 · 生命 -%d" % (_last_player_health - points), 1.1)
 	_last_player_health = points
 	hud.show_player_health(points)
 	hud.gear.set_ration_available(

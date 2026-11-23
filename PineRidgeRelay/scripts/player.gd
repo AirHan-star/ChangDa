@@ -80,7 +80,7 @@ func _physics_process(delta: float) -> void:
 	_pickup_turn_left = maxf(0.0, _pickup_turn_left - delta)
 	var motion := Vector2(get_real_velocity().x, get_real_velocity().z).length()
 	var visual_tool := _swing_tool if is_swinging() else equipped
-	survivor.update_pose(delta, motion, is_on_floor(), visual_tool, progress, is_swinging())
+	survivor.update_pose(delta, motion, is_on_floor(), visual_tool, progress, is_swinging(), get_real_velocity().y)
 	held_tool.transform = survivor.grip_transform()
 	if impact:
 		tool_impact.emit(_swing_tool, _swing_facing)

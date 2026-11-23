@@ -7,6 +7,8 @@ const ACCENT := Color("#efbf75")
 const MINT := Color("#a6e0b8")
 const NIGHT_BLUE := Color("#a6c9fa")
 const WARNING := Color("#f39282")
+const CRITICAL_HEALTH := 25
+const FLASH_DURATION := 0.62
 
 @onready var mission: Label = $Screen/Brief/Mission
 @onready var route: Label = $Screen/Brief/Route
@@ -19,12 +21,17 @@ const WARNING := Color("#f39282")
 @onready var player_health_bar: ProgressBar = $Screen/PlayerVitals/Content/HealthBar
 @onready var raid_label: Label = $Screen/Survival/Content/Raid
 @onready var gear: GearPanels = $Screen/Gear
+@onready var hurt_edges: ColorRect = $Screen/HurtEdges
+@onready var _hurt_material: ShaderMaterial = hurt_edges.material
 @onready var toast: Label = $Screen/Toast
 @onready var result: ColorRect = $Screen/Result
 @onready var result_title: Label = $Screen/Result/Card/Content/Title
 @onready var result_detail: Label = $Screen/Result/Card/Content/Detail
 
 var _toast_time := 0.0
+var _flash_time := 0.0
+var _critical_target := 0.0
+var _critical_amount := 0.0
 
 
 func _ready() -> void:
@@ -32,10 +39,27 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_update_hurt_edges(delta)
 	if _toast_time > 0.0:
 		_toast_time -= delta
 		if _toast_time <= 0.0:
 			toast.hide()
+
+
+func _update_hurt_edges(delta: float) -> void:
+	if not hurt_edges.visible and _critical_target == 0.0 and _flash_time == 0.0:
+		return
+	_flash_time = maxf(0.0, _flash_time - delta)
+	_critical_amount = move_toward(_critical_amount, _critical_target, 3.0 * delta)
+	_hurt_material.set_shader_parameter(&"flash", smoothstep(0.0, FLASH_DURATION, _flash_time))
+	_hurt_material.set_shader_parameter(&"critical", _critical_amount)
+	hurt_edges.visible = _flash_time > 0.0 or _critical_amount > 0.0
+
+
+func flash_damage() -> void:
+	_flash_time = FLASH_DURATION
+	_hurt_material.set_shader_parameter(&"flash", 1.0)
+	hurt_edges.show()
 
 
 func show_supplies(rules: SupplyRules, equipped_tool: int) -> void:
@@ -59,9 +83,10 @@ func show_supplies(rules: SupplyRules, equipped_tool: int) -> void:
 
 
 func show_player_health(points: int) -> void:
+	_critical_target = 1.0 if points <= CRITICAL_HEALTH else 0.0
 	player_health_label.text = "生命 %d / %d" % [points, SurvivalRules.PLAYER_MAX_HEALTH]
 	player_health_bar.value = points
-	player_health_bar.modulate = MINT if points > 55 else (ACCENT if points > 25 else WARNING)
+	player_health_bar.modulate = MINT if points > 55 else (ACCENT if points > CRITICAL_HEALTH else WARNING)
 
 
 func show_survival(state: SurvivalRules, spawned: int, active: int, chasing: int) -> void:

@@ -1,9 +1,15 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/hud.gd" id="1"]
 [ext_resource type="FontFile" path="res://assets/relay_ui.otf" id="2"]
 
 [ext_resource type="Script" path="res://scripts/gear_panels.gd" id="Gear"]
+
+[ext_resource type="Shader" path="res://assets/hurt_edges.gdshader" id="HurtEdges"]
+
+[sub_resource type="ShaderMaterial" id="HurtMaterial"]
+resource_local_to_scene = true
+shader = ExtResource("HurtEdges")
 
 [sub_resource type="Theme" id="Theme"]
 default_font = ExtResource("2")
@@ -47,6 +53,17 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme = SubResource("Theme")
+
+[node name="HurtEdges" type="ColorRect" parent="Screen"]
+visible = false
+material = SubResource("HurtMaterial")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="Brief" type="VBoxContainer" parent="Screen"]
 layout_mode = 0

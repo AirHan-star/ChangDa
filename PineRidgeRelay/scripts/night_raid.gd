@@ -1,6 +1,10 @@
 class_name NightRaid
 extends RefCounted
 
+signal growled(point: Vector3)
+signal gate_struck(point: Vector3)
+signal enemy_struck(point: Vector3)
+
 const INFECTED_SCENE := preload("res://scenes/infected.tscn")
 const MAX_ACTIVE := 4
 const MAX_TOTAL := 10
@@ -47,6 +51,8 @@ func tick(delta: float, survival: SurvivalRules) -> void:
 	ordered.sort_custom(func(a: RelayInfected, b: RelayInfected) -> bool:
 		return a.global_position.z < b.global_position.z)
 	for infected in ordered:
+		if infected.tick_voice(delta, _player.global_position):
+			growled.emit(infected.global_position + Vector3.UP * 1.4)
 		if infected.chase_left > 0.0:
 			if infected.pursue(delta, visible_pursuers[infected]):
 				survival.damage_player(PLAYER_HIT_DAMAGE)
@@ -54,6 +60,7 @@ func tick(delta: float, survival: SurvivalRules) -> void:
 			var ahead: RelayInfected = previous.get(infected.lane)
 			var goal := stop_z if ahead == null else ahead.global_position.z + 1.15
 			if infected.advance(delta, _gate.global_position.x + LANES[infected.lane], goal, ahead == null):
+				gate_struck.emit(_gate.global_position + Vector3.UP * 1.20)
 				survival.damage_gate(HIT_DAMAGE)
 			previous[infected.lane] = infected
 		if survival.is_over():
@@ -123,9 +130,9 @@ func strike(origin: Vector3, facing: Vector3, player_rid: RID) -> bool:
 		target = infected
 	if target == null:
 		return false
+	enemy_struck.emit(target.global_position + Vector3.UP * 1.02)
 	if target.take_sword_hit():
 		active.erase(target)
-		target.queue_free()
 	return true
 
 

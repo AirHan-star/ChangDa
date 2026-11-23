@@ -15,33 +15,43 @@ var last_seen_player := Vector3.ZERO
 var health := 3
 var _attack_in := 0.9
 var _player_attack_in := PLAYER_WINDUP
-var _stride := 0.0
-var _hit_feedback := 0.0
+var _growl_in := 0.0
+var _fall_time := 0.0
+var _fall_side := 1.0
+var _struck := false
 var _detour_side := 1.0
 
-@onready var model: Node3D = $Model
-@onready var left_leg: Node3D = $Model/Visual/LeftLeg
-@onready var right_leg: Node3D = $Model/Visual/RightLeg
-@onready var left_arm: Node3D = $Model/Visual/LeftArm
-@onready var right_arm: Node3D = $Model/Visual/RightArm
-@onready var left_elbow: Node3D = $Model/Visual/LeftArm/ElbowLeft
-@onready var right_elbow: Node3D = $Model/Visual/RightArm/ElbowRight
+@onready var model: InfectedPose = $Model
+
+
+func _ready() -> void:
+	_growl_in = randf_range(0.40, 1.70)
+	_fall_side = -1.0 if randi() % 2 == 0 else 1.0
+	set_physics_process(false)
+
+
+func tick_voice(delta: float, listener: Vector3) -> bool:
+	_growl_in = maxf(0.0, _growl_in - delta)
+	if _growl_in > 0.0 or global_position.distance_squared_to(listener) > 21.0 ** 2:
+		return false
+	_growl_in = randf_range(4.1, 6.9)
+	model.growl(0.78)
+	return true
 
 
 func advance(delta: float, lane_x: float, stop_z: float, front: bool) -> bool:
 	var offset := Vector3(lane_x - global_position.x, 0.0, stop_z - global_position.z)
 	var arrived := absf(offset.z) < 0.08 and absf(offset.x) < 0.20
 	_move(delta, Vector3.ZERO if arrived else offset, PI)
-
 	if not front or not arrived:
+		_animate(delta, false, 0.0, 0.0)
 		return false
 	_attack_in -= delta
-	if _attack_in <= 0.0:
+	var contact := _attack_in <= 0.0
+	_strike_pose(delta, false, _attack_in, HIT_INTERVAL, 0.56, contact)
+	if contact:
 		_attack_in += HIT_INTERVAL
-		return true
-	if _attack_in > HIT_INTERVAL - 0.38:
-		_reach_out(-1.86)
-	return false
+	return contact
 
 
 func pursue(delta: float, may_strike: bool) -> bool:
@@ -56,21 +66,34 @@ func pursue(delta: float, may_strike: bool) -> bool:
 
 	_player_attack_in = maxf(0.0, _player_attack_in - delta)
 	if not in_reach:
-		# A player who backs away can interrupt the strike before contact.
+		# Moving away before contact interrupts the strike.
 		_player_attack_in = maxf(_player_attack_in, PLAYER_WINDUP)
+		_animate(delta, true, 0.0, 0.0)
 		return false
-	if _player_attack_in <= 0.0:
+	var contact := _player_attack_in <= 0.0
+	_strike_pose(delta, true, _player_attack_in, PLAYER_STRIKE_INTERVAL, PLAYER_WINDUP, contact)
+	if contact:
 		_player_attack_in = PLAYER_STRIKE_INTERVAL
-		_reach_out(-1.82)
-		return true
-	if _player_attack_in <= PLAYER_WINDUP:
-		_reach_out(lerpf(-1.82, -0.82, _player_attack_in / PLAYER_WINDUP))
-	return false
+	return contact
 
 
-func _reach_out(angle: float) -> void:
-	right_arm.rotation.x = angle
-	right_elbow.rotation.x = -0.34
+func _strike_pose(delta: float, chasing: bool, next_hit: float, interval: float,
+		windup_time: float, contact: bool) -> void:
+	var windup := clampf(1.0 - next_hit / windup_time, 0.0, 1.0)
+	var since_hit := interval - next_hit
+	var recovery := 0.0
+	if _struck and since_hit < InfectedPose.STRIKE_RECOVERY:
+		recovery = clampf(since_hit / InfectedPose.STRIKE_RECOVERY, 0.001, 1.0)
+	if _struck and recovery == 0.0 and not contact:
+		_struck = false
+		model.next_strike()
+	_struck = _struck or contact
+	_animate(delta, chasing, windup, recovery)
+
+
+func _animate(delta: float, chasing: bool, windup: float, recovery: float) -> void:
+	var motion := get_real_velocity()
+	model.animate(delta, Vector2(motion.x, motion.z).length(), chasing, windup, recovery)
 
 
 func _move(delta: float, offset: Vector3, rest_facing: float) -> void:
@@ -83,18 +106,6 @@ func _move(delta: float, offset: Vector3, rest_facing: float) -> void:
 	if not is_on_floor():
 		velocity.y -= 18.0 * delta
 	move_and_slide()
-
-	_stride += delta * 7.25
-	var moving := Vector2(get_real_velocity().x, get_real_velocity().z).length_squared() > 0.02
-	var swing := sin(_stride) * 0.29 if moving else 0.0
-	left_leg.rotation.x = swing
-	right_leg.rotation.x = -swing
-	left_arm.rotation.x = -1.15 + swing * 0.55
-	right_arm.rotation.x = -1.25 - swing * 0.55
-	left_elbow.rotation.x = -0.23 + swing * 0.37
-	right_elbow.rotation.x = -0.14 - swing * 0.26
-	_hit_feedback = maxf(0.0, _hit_feedback - delta)
-	model.rotation.z = _hit_feedback * 0.74
 
 
 func _clear_course(offset: Vector3) -> Vector3:
@@ -114,5 +125,22 @@ func _clear_course(offset: Vector3) -> Vector3:
 
 func take_sword_hit() -> bool:
 	health -= 2
-	_hit_feedback = 0.22
-	return health <= 0
+	model.stagger()
+	if health > 0:
+		return false
+	collision_layer = 0
+	collision_mask = 0
+	set_physics_process(true)
+	return true
+
+
+func _physics_process(delta: float) -> void:
+	_fall_time += delta
+	var fall := smoothstep(0.0, 0.51, _fall_time)
+	model.collapse(fall)
+	model.rotation.x = -1.28 * fall
+	model.rotation.z = _fall_side * 0.34 * fall
+	model.position = Vector3(_fall_side * 0.23 * fall, 0.18 * fall, -0.38 * fall)
+	model.animate(delta, 0.0, false, 0.0, 0.0)
+	if _fall_time >= 1.40:
+		queue_free()
