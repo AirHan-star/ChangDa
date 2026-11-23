@@ -11,6 +11,7 @@ const WALK_SPEED := 4.1
 const RUN_SPEED := 6.6
 const JUMP_SPEED := 6.3
 const LOOK_SENSITIVITY := 0.0026
+const RECOIL_TIME := 0.24
 
 @onready var orbit: Node3D = $Orbit
 @onready var arm: SpringArm3D = $Orbit/Arm
@@ -28,9 +29,14 @@ var _swing_elapsed := 0.0
 var _swing_duration := 0.0
 var _pickup_turn_left := 0.0
 var _pickup_facing := 0.0
+var _fire_left := 0.0
 
 
 func _ready() -> void:
+	for tool in [RelayEquipment.iron_pick(), RelayEquipment.axe(), RelayEquipment.carbine()]:
+		held_tool.add_child(tool)
+		_tool_models.append(tool)
+	_show_tool()
 	arm.add_excluded_object(get_rid())
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -52,7 +58,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	var steer := Vector2.ZERO
-	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if not panel_open and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		steer = Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
 	var direction := orbit.basis * Vector3(steer.x, 0.0, steer.y)
 	var sprint := Input.is_action_pressed(&"sprint")
@@ -60,12 +66,13 @@ func _physics_process(delta: float) -> void:
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z).move_toward(direction * speed, 28.0 * delta)
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
-	if is_on_floor() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed(&"jump"):
+	if not panel_open and is_on_floor() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed(&"jump"):
 		velocity.y = JUMP_SPEED
 	elif not is_on_floor():
 		velocity.y -= 18.0 * delta
 	move_and_slide()
 
+	_fire_left = maxf(0.0, _fire_left - delta)
 	var progress := 0.0
 	var impact := false
 	if _swing_tool >= 0:
@@ -73,14 +80,15 @@ func _physics_process(delta: float) -> void:
 		_swing_elapsed = minf(_swing_elapsed + delta, _swing_duration)
 		progress = _swing_elapsed / _swing_duration
 		impact = previous < IMPACT_FRACTION and progress >= IMPACT_FRACTION
-	elif direction.length_squared() > 0.01:
+	elif _fire_left <= 0.0 and direction.length_squared() > 0.01:
 		model.rotation.y = lerp_angle(model.rotation.y, atan2(direction.x, direction.z), minf(12.0 * delta, 1.0))
 	elif _pickup_turn_left > 0.0:
 		model.rotation.y = lerp_angle(model.rotation.y, _pickup_facing, minf(14.0 * delta, 1.0))
 	_pickup_turn_left = maxf(0.0, _pickup_turn_left - delta)
 	var motion := Vector2(get_real_velocity().x, get_real_velocity().z).length()
 	var visual_tool := _swing_tool if is_swinging() else equipped
-	survivor.update_pose(delta, motion, is_on_floor(), visual_tool, progress, is_swinging(), get_real_velocity().y)
+	survivor.update_pose(delta, motion, is_on_floor(), visual_tool, progress, is_swinging(),
+		get_real_velocity().y, _fire_left / RECOIL_TIME)
 	held_tool.transform = survivor.grip_transform()
 	if impact:
 		tool_impact.emit(_swing_tool, _swing_facing)
@@ -112,12 +120,29 @@ func start_swing(tool: int, facing: Vector3) -> bool:
 	_swing_tool = tool
 	_swing_facing = facing
 	_swing_elapsed = 0.0
-	_swing_duration = SWORD_SWING_TIME if tool == SupplyRules.Tool.STONE_SWORD else PICK_SWING_TIME
+	_swing_duration = SWORD_SWING_TIME if tool in [SupplyRules.Tool.STONE_SWORD, SupplyRules.Tool.IRON_AXE] else PICK_SWING_TIME
 	_pickup_turn_left = 0.0
 	if not facing.is_zero_approx():
 		model.rotation.y = atan2(facing.x, facing.z)
 	_show_tool()
 	return true
+
+
+func begin_fire(facing: Vector3) -> Vector3:
+	model.rotation.y = atan2(facing.x, facing.z)
+	survivor.update_pose(0.0, 0.0, is_on_floor(), SupplyRules.Tool.CARBINE, 0.0, false)
+	held_tool.transform = survivor.grip_transform()
+	_fire_left = RECOIL_TIME
+	return (_tool_models[SupplyRules.Tool.CARBINE].get_node("Muzzle") as Node3D).global_position
+
+
+func relocate(point: Vector3) -> void:
+	global_position = point
+	velocity = Vector3.ZERO
+	_swing_tool = -1
+	_fire_left = 0.0
+	_pickup_turn_left = 0.0
+	_show_tool()
 
 
 func _show_tool() -> void:

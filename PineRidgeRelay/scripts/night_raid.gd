@@ -2,169 +2,168 @@ class_name NightRaid
 extends RefCounted
 
 signal growled(point: Vector3)
-signal gate_struck(point: Vector3)
 signal enemy_struck(point: Vector3)
 
 const INFECTED_SCENE := preload("res://scenes/infected.tscn")
-const MAX_ACTIVE := 4
-const MAX_TOTAL := 10
-const SPAWN_INTERVAL := 3.8
-const HIT_DAMAGE := 3
-const PLAYER_HIT_DAMAGE := 14
-const PLAYER_AGGRO_CHANCE := 0.65
-const PLAYER_NOTICE_RANGE := 6.5
-const PLAYER_CHASE_RANGE := 9.5
-const PLAYER_CHASE_TIME := 10.0
-const PLAYER_SIGHT_GRACE := 1.25
-const MAX_PLAYER_CHASERS := 2
-const LANES: Array[float] = [-0.82, 0.0, 0.82]
-const SWORD_RANGE := 2.55
-const SWORD_CONE := 0.30
+const DETECT_RANGE := 8.0
+const HOME_LEASH := 17.0
+const SIGHT_GRACE := 2.1
+const HIT_DAMAGE := 14
 
-var spawned := 0
 var active: Array[RelayInfected] = []
 var chasing_count := 0
 var _spawn_in := 0.0
-var _parent: Node3D
-var _gate: StationGate
+var _next_nest := 0
+var _spawn_attempts := 0
+var _region: SurvivalRegion
 var _player: RelayPlayer
-var _rng := RandomNumberGenerator.new()
+var _cleared: Dictionary
+var _day := 0
 
 
-func _init(parent: Node3D, gate: StationGate, player: RelayPlayer) -> void:
-	_parent = parent
-	_gate = gate
+func _init(region: SurvivalRegion, player: RelayPlayer, cleared: Dictionary) -> void:
+	_region = region
 	_player = player
-	_rng.randomize()
+	_cleared = cleared
+
+
+func end_night() -> void:
+	for enemy in active:
+		enemy.queue_free()
+	active.clear()
+	_next_nest = 0
+	_spawn_attempts = 0
+	_spawn_in = 0
+	chasing_count = 0
 
 
 func tick(delta: float, survival: SurvivalRules) -> void:
+	_day = survival.day
 	_spawn_in = maxf(0.0, _spawn_in - delta)
-	if _spawn_in == 0.0 and spawned < MAX_TOTAL and active.size() < MAX_ACTIVE:
-		_spawn_in = SPAWN_INTERVAL if _spawn() else 0.45
-
-	var visible_pursuers := _update_chases(delta)
-	var stop_z := _gate.global_position.z + 0.78
-	var previous: Dictionary = {}
-	var ordered := active.duplicate()
-	# A returning pursuer may arrive behind the unit that was once behind it.
-	ordered.sort_custom(func(a: RelayInfected, b: RelayInfected) -> bool:
-		return a.global_position.z < b.global_position.z)
-	for infected in ordered:
-		if infected.tick_voice(delta, _player.global_position):
-			growled.emit(infected.global_position + Vector3.UP * 1.4)
-		if infected.chase_left > 0.0:
-			if infected.pursue(delta, visible_pursuers[infected]):
-				survival.damage_player(PLAYER_HIT_DAMAGE)
+	var nests := _region.nests()
+	if _spawn_in <= 0.0 and _next_nest < nests.size():
+		var home := _region.surface(nests[_next_nest])
+		if _cleared.has(_key(_next_nest)) or _spawn(home, _next_nest):
+			_next_nest += 1
+			_spawn_attempts = 0
+			_spawn_in = 1.1
 		else:
-			var ahead: RelayInfected = previous.get(infected.lane)
-			var goal := stop_z if ahead == null else ahead.global_position.z + 1.15
-			if infected.advance(delta, _gate.global_position.x + LANES[infected.lane], goal, ahead == null):
-				gate_struck.emit(_gate.global_position + Vector3.UP * 1.20)
-				survival.damage_gate(HIT_DAMAGE)
-			previous[infected.lane] = infected
-		if survival.is_over():
+			_spawn_attempts += 1
+			if _spawn_attempts >= 4:
+				_next_nest += 1
+				_spawn_attempts = 0
+			_spawn_in = 0.9
+
+	chasing_count = 0
+	for enemy in active:
+		var seen := _update_target(enemy, delta)
+		if enemy.tick_voice(delta, _player.global_position):
+			growled.emit(enemy.global_position + Vector3.UP * 1.35)
+		if enemy.chasing:
+			chasing_count += 1
+			if enemy.pursue(delta, seen):
+				survival.damage_player(HIT_DAMAGE)
+		else:
+			enemy.roam(delta)
+		if survival.player_health <= 0:
 			return
 
 
-func _update_chases(delta: float) -> Dictionary:
-	var visible_pursuers: Dictionary = {}
+func _update_target(enemy: RelayInfected, delta: float) -> bool:
 	var player_at := _player.global_position
-	for infected in active:
-		if infected.chase_left <= 0.0:
-			continue
-		infected.chase_left = maxf(0.0, infected.chase_left - delta)
-		if infected.chase_left == 0.0 or infected.global_position.distance_squared_to(player_at) > PLAYER_CHASE_RANGE ** 2:
-			infected.chase_left = 0.0
-			continue
-		var visible := _sees_player(infected)
-		if visible:
-			infected.last_seen_player = player_at
-			infected.sight_lost_for = 0.0
-		else:
-			infected.sight_lost_for += delta
-			if infected.sight_lost_for >= PLAYER_SIGHT_GRACE:
-				infected.chase_left = 0.0
-				continue
-		visible_pursuers[infected] = visible
-	for infected in active:
-		if visible_pursuers.size() >= MAX_PLAYER_CHASERS:
-			break
-		if infected.player_target_checked or infected.global_position.distance_squared_to(player_at) > PLAYER_NOTICE_RANGE ** 2:
-			continue
-		if not _sees_player(infected):
-			continue
-		# One roll per infected, on first unobstructed encounter.
-		infected.player_target_checked = true
-		if _rng.randf() < PLAYER_AGGRO_CHANCE:
-			infected.chase_left = PLAYER_CHASE_TIME
-			infected.last_seen_player = player_at
-			visible_pursuers[infected] = true
-	chasing_count = visible_pursuers.size()
-	return visible_pursuers
+	var player_near_home := enemy.home.distance_squared_to(player_at) <= HOME_LEASH ** 2
+	var enemy_near_home := enemy.home.distance_squared_to(enemy.global_position) <= HOME_LEASH ** 2
+	if not player_near_home or not enemy_near_home:
+		if enemy.chasing:
+			enemy.return_home()
+		return false
+	if enemy.returning:
+		return false
+	var in_range := enemy.global_position.distance_squared_to(player_at) <= DETECT_RANGE ** 2
+	if not in_range and not enemy.chasing:
+		return false
+	var visible := _sees_player(enemy)
+	if visible:
+		enemy.last_seen_player = player_at
+		enemy.sight_lost_for = 0.0
+		enemy.chasing = true
+	elif enemy.chasing:
+		enemy.sight_lost_for += delta
+		if enemy.sight_lost_for > SIGHT_GRACE:
+			enemy.return_home()
+	return visible
 
 
-func _sees_player(infected: RelayInfected) -> bool:
-	var eye := infected.global_position + Vector3.UP * 1.35
-	var torso := _player.global_position + Vector3.UP * 0.95
-	var query := PhysicsRayQueryParameters3D.create(eye, torso, 9)
-	return _parent.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+func _sees_player(enemy: RelayInfected) -> bool:
+	var start := enemy.global_position + Vector3.UP * 1.35
+	var finish := _player.global_position + Vector3.UP * 0.92
+	var ray := PhysicsRayQueryParameters3D.create(start, finish, 9)
+	return _region.get_world_3d().direct_space_state.intersect_ray(ray).is_empty()
 
 
-func strike(origin: Vector3, facing: Vector3, player_rid: RID) -> bool:
+func strike(origin: Vector3, facing: Vector3, reach: float, damage: int) -> bool:
 	var target: RelayInfected
-	var best_distance := SWORD_RANGE * SWORD_RANGE
-	var space := _parent.get_world_3d().direct_space_state
-	for infected in active:
-		var body := infected.global_position + Vector3.UP * 0.92
-		var offset := body - origin
-		var horizontal := Vector3(offset.x, 0.0, offset.z)
+	var best := reach * reach
+	var space := _region.get_world_3d().direct_space_state
+	for enemy in active:
+		var point := enemy.global_position + Vector3.UP * 0.92
+		var offset := point - origin
+		var alignment := Vector3(offset.x, 0, offset.z).normalized().dot(facing)
 		var distance := offset.length_squared()
-		if distance > best_distance or horizontal.normalized().dot(facing) < SWORD_CONE:
+		if distance > best or alignment < 0.30:
 			continue
-		var ray := PhysicsRayQueryParameters3D.create(origin, body, 13, [player_rid])
+		var ray := PhysicsRayQueryParameters3D.create(origin, point, 13)
 		var hit := space.intersect_ray(ray)
-		if not hit.is_empty() and hit.get("collider") != infected:
+		if not hit.is_empty() and hit.get("collider") != enemy:
 			continue
-		best_distance = distance
-		target = infected
+		target = enemy
+		best = distance
 	if target == null:
 		return false
-	enemy_struck.emit(target.global_position + Vector3.UP * 1.02)
-	if target.take_sword_hit():
-		active.erase(target)
+	_hit(target, damage)
 	return true
 
 
-func _spawn() -> bool:
-	var counts := [0, 0, 0]
-	for infected in active:
-		counts[infected.lane] += 1
-	var infected := INFECTED_SCENE.instantiate() as RelayInfected
-	var collision := infected.get_node("Collision") as CollisionShape3D
+func shoot(origin: Vector3, direction: Vector3) -> Vector3:
+	var end := origin + direction * 36.0
+	var query := PhysicsRayQueryParameters3D.create(origin, end, 13, [_player.get_rid()])
+	var hit := _region.get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return end
+	var enemy := hit.get("collider") as RelayInfected
+	if enemy != null and active.has(enemy):
+		_hit(enemy, 4)
+	return hit.position
+
+
+func _hit(enemy: RelayInfected, damage: int) -> void:
+	enemy_struck.emit(enemy.global_position + Vector3.UP)
+	if enemy.take_hit(damage):
+		_cleared[_key(enemy.nest)] = true
+		active.erase(enemy)
+
+
+func _spawn(home: Vector3, index: int) -> bool:
+	var enemy := INFECTED_SCENE.instantiate() as RelayInfected
+	var hull := enemy.get_node("Collision") as CollisionShape3D
 	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = collision.shape
+	query.shape = hull.shape
 	query.collision_mask = 15
-	var space := _parent.get_world_3d().direct_space_state
-	var lanes := [0, 1, 2]
-	lanes.sort_custom(func(a: int, b: int) -> bool:
-		return a < b if counts[a] == counts[b] else counts[a] < counts[b])
-	for lane in lanes:
-		var z := _gate.global_position.z + 18.0 + (spawned % 3) * 1.15
-		for other in active:
-			if other.lane == lane:
-				z = maxf(z, other.global_position.z + 1.4)
-		for step in range(4):
-			var destination := Vector3(_gate.global_position.x + LANES[lane], 0.06, z + step * 1.25)
-			query.transform.origin = destination + collision.position
-			if not space.intersect_shape(query, 1).is_empty():
-				continue
-			infected.lane = lane
-			infected.position = _parent.to_local(destination)
-			infected.rotation.y = PI
-			_parent.add_child(infected)
-			active.append(infected)
-			spawned += 1
-			return true
-	infected.free()
+	for offset in [Vector3.ZERO, Vector3(1.5,0,0), Vector3(-1.5,0,0), Vector3(0,0,1.5), Vector3(0,0,-1.5)]:
+		var flat := Vector2(home.x, home.z) + Vector2(offset.x, offset.z)
+		var point := _region.surface(flat) + Vector3.UP * 0.16
+		query.transform.origin = point + hull.position
+		if not _region.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty():
+			continue
+		enemy.position = point
+		enemy.home = point
+		enemy.nest = index
+		_region.infected.add_child(enemy)
+		active.append(enemy)
+		return true
+	enemy.free()
 	return false
+
+
+func _key(nest: int) -> String:
+	return "%d:%d:%d" % [_day, _region.id, nest]

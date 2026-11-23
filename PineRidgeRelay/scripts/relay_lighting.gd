@@ -11,8 +11,6 @@ func update_light(phase: SurvivalRules.Phase, left: float) -> void:
 	var shade := 1.0
 	if phase == SurvivalRules.Phase.DAY:
 		shade = 1.0 - smoothstep(0.0, 20.0, left)
-	elif phase == SurvivalRules.Phase.WON:
-		shade = 0.0
 	if is_equal_approx(shade, _night_mix):
 		return
 	_night_mix = shade

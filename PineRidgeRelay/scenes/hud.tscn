@@ -120,7 +120,7 @@ offset_bottom = -20.0
 theme_override_font_sizes/font_size = 13
 theme_override_colors/font_outline_color = Color(0.06, 0.10, 0.09, 1)
 theme_override_constants/outline_size = 5
-text = "WASD 移动  ·  Shift 奔跑  ·  空格 跳跃\nE 交互  ·  左键 挥动  ·  H 食用罐头"
+text = "WASD 移动  ·  Shift 奔跑  ·  空格 跳跃\nE 交互  ·  F 传送  ·  J 记录  ·  H 食用罐头"
 
 [node name="Survival" type="PanelContainer" parent="Screen"]
 layout_mode = 1
@@ -141,16 +141,9 @@ theme_override_constants/separation = 5
 theme_override_font_sizes/font_size = 18
 horizontal_alignment = 1
 
-[node name="Gate" type="Label" parent="Screen/Survival/Content"]
+[node name="Region" type="Label" parent="Screen/Survival/Content"]
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
-
-[node name="Health" type="ProgressBar" parent="Screen/Survival/Content"]
-custom_minimum_size = Vector2(0, 5)
-mouse_filter = 2
-theme_override_styles/background = SubResource("HealthBackground")
-theme_override_styles/fill = SubResource("HealthFill")
-show_percentage = false
 
 [node name="Raid" type="Label" parent="Screen/Survival/Content"]
 theme_override_font_sizes/font_size = 14
@@ -205,6 +198,24 @@ anchor_bottom = 1.0
 mouse_filter = 2
 script = ExtResource("Gear")
 
+[node name="Aim" type="Label" parent="Screen"]
+visible = false
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = -11.0
+offset_right = 11.0
+offset_top = -14.0
+offset_bottom = 14.0
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "+"
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 4
+theme_override_colors/font_outline_color = Color(0.05, 0.10, 0.08, 1)
+mouse_filter = 2
+
 [node name="Result" type="ColorRect" parent="Screen"]
 visible = false
 layout_mode = 1
@@ -248,4 +259,4 @@ custom_minimum_size = Vector2(176, 44)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 19
-text = "重新开始  [R]"
+text = "返回气象站"

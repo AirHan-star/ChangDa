@@ -5,20 +5,27 @@ signal panel_requested(panel: int)
 signal craft_requested(tool: int)
 signal equip_requested(tool: int)
 signal ration_requested
+signal travel_requested(map_id: int)
+signal station_requested(station: int)
 
-enum PanelKind { NONE, CRAFT, BAG }
+enum PanelKind { NONE, CRAFT, BAG, TRAVEL, JOURNAL }
 
-const RESOURCE_NAMES := ["木料", "罐头", "石头"]
-const TOOL_NAMES := ["木镐", "石镐", "石剑"]
+const RESOURCE_NAMES := SupplyRules.ITEMS
+const TOOL_NAMES := SupplyRules.TOOLS
 const RESOURCE_ICONS: Array[Texture2D] = [
 	preload("res://assets/icons/wood.png"),
 	preload("res://assets/icons/ration.png"),
 	preload("res://assets/icons/stone.png"),
+	preload("res://assets/icons/iron-ore.png"), preload("res://assets/icons/sulfur.png"),
+	preload("res://assets/icons/iron.png"), preload("res://assets/icons/powder.png"),
+	preload("res://assets/icons/ammo.png"),
 ]
 const TOOL_ICONS: Array[Texture2D] = [
 	preload("res://assets/icons/wood-pick.png"),
 	preload("res://assets/icons/stone-pick.png"),
 	preload("res://assets/icons/stone-sword.png"),
+	preload("res://assets/icons/iron-pick.png"), preload("res://assets/icons/iron-axe.png"),
+	preload("res://assets/icons/carbine.png"),
 ]
 
 var active_panel: int = PanelKind.NONE
@@ -26,6 +33,13 @@ var _overlay: ColorRect
 var _title: Label
 var _craft_list: VBoxContainer
 var _bag: VBoxContainer
+var _travel: VBoxContainer
+var _journal: VBoxContainer
+var _travel_options: Array[Button] = []
+var _reading: Label
+var _craft_context: Label
+var _recipe_rows: Array[Control] = []
+var _ammo: Label
 var _quick_counts: Array[Label] = []
 var _bag_counts: Array[Label] = []
 var _tools: Array[Button] = []
@@ -47,13 +61,16 @@ func show_panel(panel: int) -> void:
 	_overlay.visible = panel != PanelKind.NONE
 	_craft_list.visible = panel == PanelKind.CRAFT
 	_bag.visible = panel == PanelKind.BAG
-	_title.text = "合成" if panel == PanelKind.CRAFT else "背包"
+	_travel.visible = panel == PanelKind.TRAVEL
+	_journal.visible = panel == PanelKind.JOURNAL
+	_title.text = ["", "合成", "背包", "中继传送", "余讯记录"][panel]
 
 
 func refresh(rules: SupplyRules, equipped_tool: int) -> void:
 	for i in range(RESOURCE_NAMES.size()):
 		var number := str(rules.carried(i))
-		_quick_counts[i].text = number
+		if is_instance_valid(_quick_counts[i]):
+			_quick_counts[i].text = number
 		_bag_counts[i].text = number
 	for i in range(TOOL_NAMES.size()):
 		var owned := rules.has_tool(i)
@@ -62,9 +79,30 @@ func refresh(rules: SupplyRules, equipped_tool: int) -> void:
 		tool.disabled = not owned
 		tool.add_theme_stylebox_override(&"normal", _equipped if equipped_tool == i else _normal)
 		tool.tooltip_text = "已装备" if equipped_tool == i else ("点击装备" if owned else "未拥有")
-		var craft := _craft_buttons[i]
-		craft.disabled = not rules.can_craft(i)
-		craft.text = "已拥有" if owned else ("制作" if not craft.disabled else "材料不足")
+	_ammo.text = "弹药  %d" % rules.carried(SupplyRules.Kind.AMMO)
+	_ammo.visible = equipped_tool == SupplyRules.Tool.CARBINE
+
+
+func craft_context(station: int, rules: SupplyRules, available: Callable, hint: String) -> void:
+	_craft_context.text = hint
+	for id in range(SupplyRules.RECIPES.size()):
+		var data: Array = SupplyRules.RECIPES[id]
+		var button := _craft_buttons[id]
+		_recipe_rows[id].visible = data[1] == station
+		button.disabled = not available.call(id)
+		button.text = "已拥有" if rules.recipe_owned(id) else ("制作" if not button.disabled else "不可制作")
+
+
+func travel_context(story: RelayStory, current: int) -> void:
+	for i in range(_travel_options.size()):
+		var button := _travel_options[i]
+		button.disabled = i == current or not story.unlocked(i)
+		var status := "当前位置" if i == current else ("前往" if story.unlocked(i) else "主线未开放")
+		button.text = "%s     ·     %s" % [RelayStory.MAP_NAMES[i], status]
+
+
+func journal(text: String) -> void:
+	_reading.text = text
 
 
 func set_ration_available(available: bool) -> void:
@@ -82,6 +120,10 @@ func _build_shortcuts() -> void:
 	dock.alignment = BoxContainer.ALIGNMENT_END
 	dock.add_theme_constant_override(&"separation", 6)
 	dock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ammo = _label("弹药", 18)
+	_ammo.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_ammo.hide()
+	dock.add_child(_ammo)
 	var quantities := HBoxContainer.new()
 	quantities.alignment = BoxContainer.ALIGNMENT_END
 	quantities.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -133,7 +175,7 @@ func _build_overlay() -> void:
 	_overlay.add_child(stage)
 	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var card := PanelContainer.new()
-	card.custom_minimum_size.x = 482
+	card.custom_minimum_size.x = 558
 	card.add_theme_stylebox_override(&"panel", _box(Color("#182523"), Color("#537069"), 11, 20))
 	stage.add_child(card)
 	var body := VBoxContainer.new()
@@ -152,43 +194,75 @@ func _build_overlay() -> void:
 	_craft_list.add_theme_constant_override(&"separation", 8)
 	body.add_child(_craft_list)
 	_bag = VBoxContainer.new()
-	_bag.add_theme_constant_override(&"separation", 12)
+	_bag.add_theme_constant_override(&"separation", 10)
 	body.add_child(_bag)
+	_travel = VBoxContainer.new()
+	_travel.add_theme_constant_override(&"separation", 10)
+	body.add_child(_travel)
+	_journal = VBoxContainer.new()
+	body.add_child(_journal)
+	_reading = _label("", 19)
+	_reading.custom_minimum_size = Vector2(510, 180)
+	_reading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_journal.add_child(_reading)
+	for map_id in range(RelayStory.MAP_NAMES.size()):
+		var destination := _button("")
+		destination.custom_minimum_size.y = 47
+		destination.pressed.connect(func(): travel_requested.emit(map_id))
+		_travel.add_child(destination)
+		_travel_options.append(destination)
 	_build_recipes()
 	_build_bag()
+	show_panel(PanelKind.NONE)
 
 
 func _build_recipes() -> void:
-	for tool in range(TOOL_NAMES.size()):
+	var stations := HBoxContainer.new()
+	stations.add_theme_constant_override(&"separation", 7)
+	_craft_list.add_child(stations)
+	for station in range(SupplyRules.STATIONS.size()):
+		var tab := _button(SupplyRules.STATIONS[station])
+		tab.custom_minimum_size.y = 36
+		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab.pressed.connect(func(): station_requested.emit(station))
+		stations.add_child(tab)
+	_craft_context = _label("", 14)
+	_craft_context.modulate = Color("#bdc7a3")
+	_craft_list.add_child(_craft_context)
+	for id in range(SupplyRules.RECIPES.size()):
+		var data: Array = SupplyRules.RECIPES[id]
 		var shell := PanelContainer.new()
-		shell.add_theme_stylebox_override(&"panel", _box(Color("#202f2b"), Color("#30443b"), 7, 9))
+		shell.add_theme_stylebox_override(&"panel", _box(Color("#202f2b"), Color("#30443b"), 7, 7))
 		_craft_list.add_child(shell)
+		_recipe_rows.append(shell)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override(&"separation", 13)
 		shell.add_child(row)
-		row.add_child(_icon(TOOL_ICONS[tool], 45))
+		var texture := TOOL_ICONS[data[4]] if data[4] >= 0 else preload("res://assets/icons/craft.png")
+		if not data[3].is_empty():
+			texture = RESOURCE_ICONS[data[3].keys()[0]]
+		row.add_child(_icon(texture, 36))
 		var labels := VBoxContainer.new()
 		labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		labels.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.add_child(labels)
-		labels.add_child(_label(TOOL_NAMES[tool], 17))
+		labels.add_child(_label(data[0], 17))
 		var ingredients := PackedStringArray()
-		for kind in SupplyRules.RECIPES[tool]:
-			ingredients.append("%s ×%d" % [RESOURCE_NAMES[kind], SupplyRules.RECIPES[tool][kind]])
+		for kind in data[2]:
+			ingredients.append("%s ×%d" % [RESOURCE_NAMES[kind], data[2][kind]])
 		var cost := _label("  ·  ".join(ingredients), 14)
 		cost.modulate = Color("#bdc7a3")
 		labels.add_child(cost)
 		var action := _button("制作")
-		action.custom_minimum_size = Vector2(98, 36)
+		action.custom_minimum_size = Vector2(100, 36)
 		action.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		action.pressed.connect(func(): craft_requested.emit(tool))
+		action.pressed.connect(func(): craft_requested.emit(id))
 		row.add_child(action)
 		_craft_buttons.append(action)
 
 
 func _build_bag() -> void:
 	var grid := GridContainer.new()
-	grid.columns = 3
+	grid.columns = 4
 	grid.add_theme_constant_override(&"h_separation", 9)
 	grid.add_theme_constant_override(&"v_separation", 9)
 	_bag.add_child(grid)
@@ -207,17 +281,17 @@ func _build_bag() -> void:
 			var slot := PanelContainer.new()
 			slot.add_theme_stylebox_override(&"panel", _normal)
 			frame = slot
-		frame.custom_minimum_size = Vector2(139, 103)
+		frame.custom_minimum_size = Vector2(121, 86)
 		grid.add_child(frame)
 		var face := Control.new()
 		frame.add_child(face)
 		face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var picture := _icon(graphic, 54)
-		picture.position = Vector2(42, 9)
+		var picture := _icon(graphic, 43)
+		picture.position = Vector2(39, 7)
 		face.add_child(picture)
 		var description := _label(name, 14)
-		description.position = Vector2(10, 74)
+		description.position = Vector2(7, 61)
 		face.add_child(description)
 		var count := _corner_count()
 		face.add_child(count)

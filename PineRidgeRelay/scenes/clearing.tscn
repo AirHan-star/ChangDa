@@ -1,16 +1,8 @@
-[gd_scene load_steps=34 format=3]
+[gd_scene load_steps=28 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/station/station_shell.glb" id="StationShell"]
 
-[ext_resource type="PackedScene" path="res://scenes/wood_pickup.tscn" id="Wood"]
-
-[ext_resource type="PackedScene" path="res://scenes/ore.tscn" id="Ore"]
-
-[ext_resource type="PackedScene" path="res://scenes/station_gate.tscn" id="Gate"]
-
 [ext_resource type="Script" path="res://scripts/relay_lighting.gd" id="Lighting"]
-
-[ext_resource type="Script" path="res://scripts/pickup.gd" id="Pickup"]
 
 [ext_resource type="FontFile" path="res://assets/relay_ui.otf" id="Font"]
 
@@ -20,11 +12,11 @@
 
 [ext_resource type="PackedScene" path="res://assets/world/station_fittings.glb" id="Fittings"]
 
-[ext_resource type="PackedScene" path="res://assets/world/supply_crate.glb" id="Crate"]
-
 [ext_resource type="PackedScene" path="res://assets/world/ration_tin.glb" id="Tin"]
 
 [ext_resource type="PackedScene" path="res://assets/world/perimeter.glb" id="Perimeter"]
+
+[ext_resource type="PackedScene" path="res://assets/world/supply_crate.glb" id="Crate"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyPaint"]
 sky_top_color = Color(0.20, 0.34, 0.40, 1)
@@ -49,13 +41,6 @@ fog_density = 0.012
 
 [sub_resource type="ShaderMaterial" id="Ground"]
 shader = ExtResource("GroundShader")
-
-[sub_resource type="StandardMaterial3D" id="Teal"]
-albedo_color = Color(0.36, 0.97, 0.81, 1)
-roughness = 0.91
-emission_enabled = true
-emission = Color(0.36, 0.97, 0.81, 1)
-emission_energy_multiplier = 0.68
 
 [sub_resource type="BoxMesh" id="Mesh1"]
 material = SubResource("Ground")
@@ -90,10 +75,6 @@ size = Vector3(1.86, 0.82, 1.08)
 
 [sub_resource type="BoxShape3D" id="Shape40"]
 size = Vector3(1.96, 0.15, 1.16)
-
-[sub_resource type="BoxMesh" id="Mesh51"]
-material = SubResource("Teal")
-size = Vector3(0.2, 0.2, 0.2)
 
 [sub_resource type="BoxShape3D" id="Shape69"]
 size = Vector3(0.47, 2.32, 0.47)
@@ -178,9 +159,6 @@ position = Vector3(0, 2.92, 5)
 [node name="Collision" type="CollisionShape3D" parent="Station/LintelBody"]
 shape = SubResource("Shape18")
 
-[node name="Gate" parent="Station" instance=ExtResource("Gate")]
-position = Vector3(0, 0.05, 5)
-
 [node name="RoofBody" type="StaticBody3D" parent="Station"]
 position = Vector3(0, 3.47, 0)
 
@@ -223,118 +201,6 @@ position = Vector3(0, 0.87, 0)
 
 [node name="Collision" type="CollisionShape3D" parent="Station/Chest/LidBody"]
 shape = SubResource("Shape40")
-
-[node name="ChestName" type="Label3D" parent="Station/Chest"]
-position = Vector3(0, 1.39, 0)
-pixel_size = 0.011
-font = ExtResource("Font")
-font_size = 46
-outline_size = 7
-text = "补给箱"
-billboard = 1
-modulate = Color(1, 0.84, 0.51, 1)
-
-[node name="ChestInteraction" type="Marker3D" parent="."]
-position = Vector3(2.65, 1.12, -13.75)
-
-[node name="Supplies" type="Node3D" parent="."]
-
-[node name="Wood01" parent="Supplies" instance=ExtResource("Wood")]
-position = Vector3(-0.8, 0, 1.2)
-supply_id = &"wood01"
-
-[node name="Wood02" parent="Supplies" instance=ExtResource("Wood")]
-position = Vector3(3.55, 0, 10.6)
-supply_id = &"wood02"
-
-[node name="Can01" type="Node3D" parent="Supplies"]
-position = Vector3(1.2, 0, 17.1)
-script = ExtResource("Pickup")
-supply_id = &"can01"
-kind = 1
-
-[node name="TinModel" parent="Supplies/Can01" instance=ExtResource("Tin")]
-
-[node name="Marker" type="Node3D" parent="Supplies/Can01"]
-position = Vector3(0, 1.15, 0)
-
-[node name="Diamond" type="MeshInstance3D" parent="Supplies/Can01/Marker"]
-position = Vector3(0, 0, 0)
-rotation = Vector3(0.58, 0, 0.7854)
-mesh = SubResource("Mesh51")
-
-[node name="SupplyName" type="Label3D" parent="Supplies/Can01"]
-position = Vector3(0, 1.6, 0)
-pixel_size = 0.009
-font = ExtResource("Font")
-font_size = 42
-outline_size = 7
-text = "罐头"
-billboard = 1
-modulate = Color(0.54, 1, 0.88, 1)
-
-[node name="Wood03" parent="Supplies" instance=ExtResource("Wood")]
-position = Vector3(-3.45, 0, 23.8)
-supply_id = &"wood03"
-
-[node name="Can02" type="Node3D" parent="Supplies"]
-position = Vector3(-3.1, 0, 28.3)
-script = ExtResource("Pickup")
-supply_id = &"can02"
-kind = 1
-
-[node name="TinModel" parent="Supplies/Can02" instance=ExtResource("Tin")]
-
-[node name="Marker" type="Node3D" parent="Supplies/Can02"]
-position = Vector3(0, 1.15, 0)
-
-[node name="Diamond" type="MeshInstance3D" parent="Supplies/Can02/Marker"]
-position = Vector3(0, 0, 0)
-rotation = Vector3(0.58, 0, 0.7854)
-mesh = SubResource("Mesh51")
-
-[node name="SupplyName" type="Label3D" parent="Supplies/Can02"]
-position = Vector3(0, 1.6, 0)
-pixel_size = 0.009
-font = ExtResource("Font")
-font_size = 42
-outline_size = 7
-text = "罐头"
-billboard = 1
-modulate = Color(0.54, 1, 0.88, 1)
-
-[node name="Wood04" parent="Supplies" instance=ExtResource("Wood")]
-position = Vector3(1.7, 0, -2.9)
-supply_id = &"wood04"
-
-[node name="Wood05" parent="Supplies" instance=ExtResource("Wood")]
-position = Vector3(2.45, 0, 4.7)
-supply_id = &"wood05"
-
-[node name="Wood06" parent="Supplies" instance=ExtResource("Wood")]
-position = Vector3(-1.9, 0, 8.0)
-supply_id = &"wood06"
-
-[node name="Wood07" parent="Supplies" instance=ExtResource("Wood")]
-position = Vector3(2.45, 0, 19.4)
-supply_id = &"wood07"
-
-[node name="Wood08" parent="Supplies" instance=ExtResource("Wood")]
-position = Vector3(-2.2, 0, 26.1)
-supply_id = &"wood08"
-
-[node name="Ores" type="Node3D" parent="."]
-
-[node name="Ore01" parent="Ores" instance=ExtResource("Ore")]
-position = Vector3(-2.7, 0, 4.3)
-
-[node name="Ore02" parent="Ores" instance=ExtResource("Ore")]
-position = Vector3(0.0, 0, 13.2)
-
-[node name="Ore03" parent="Ores" instance=ExtResource("Ore")]
-position = Vector3(-3.4, 0, 21.5)
-
-[node name="Infected" type="Node3D" parent="."]
 
 [node name="Woods" type="Node3D" parent="."]
 

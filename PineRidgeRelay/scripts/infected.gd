@@ -2,18 +2,19 @@ class_name RelayInfected
 extends CharacterBody3D
 
 const SPEED := 1.95
-const HIT_INTERVAL := 2.55
 const PLAYER_REACH := 1.05
 const PLAYER_STRIKE_INTERVAL := 1.60
 const PLAYER_WINDUP := 0.48
 
-var lane: int
-var player_target_checked := false
-var chase_left := 0.0
+var home: Vector3
+var nest: int
+var chasing := false
+var returning := false
+var _wander_target := Vector3.ZERO
+var _wander_in := 0.0
 var sight_lost_for := 0.0
 var last_seen_player := Vector3.ZERO
 var health := 3
-var _attack_in := 0.9
 var _player_attack_in := PLAYER_WINDUP
 var _growl_in := 0.0
 var _fall_time := 0.0
@@ -25,6 +26,7 @@ var _detour_side := 1.0
 
 
 func _ready() -> void:
+	_wander_target = home
 	_growl_in = randf_range(0.40, 1.70)
 	_fall_side = -1.0 if randi() % 2 == 0 else 1.0
 	set_physics_process(false)
@@ -39,19 +41,31 @@ func tick_voice(delta: float, listener: Vector3) -> bool:
 	return true
 
 
-func advance(delta: float, lane_x: float, stop_z: float, front: bool) -> bool:
-	var offset := Vector3(lane_x - global_position.x, 0.0, stop_z - global_position.z)
-	var arrived := absf(offset.z) < 0.08 and absf(offset.x) < 0.20
-	_move(delta, Vector3.ZERO if arrived else offset, PI)
-	if not front or not arrived:
-		_animate(delta, false, 0.0, 0.0)
-		return false
-	_attack_in -= delta
-	var contact := _attack_in <= 0.0
-	_strike_pose(delta, false, _attack_in, HIT_INTERVAL, 0.56, contact)
-	if contact:
-		_attack_in += HIT_INTERVAL
-	return contact
+func return_home() -> void:
+	chasing = false
+	returning = true
+	_player_attack_in = PLAYER_WINDUP
+	_wander_in = 1.0
+
+
+func roam(delta: float) -> void:
+	if returning:
+		var offset := home - global_position
+		offset.y = 0
+		if offset.length_squared() < 0.65 ** 2:
+			returning = false
+			_wander_target = home
+		_move(delta, offset if returning else Vector3.ZERO, rotation.y, 1.45)
+	else:
+		_wander_in -= delta
+		if _wander_in <= 0:
+			_wander_in = randf_range(2.3, 4.2)
+			var heading := randf() * TAU
+			_wander_target = home + Vector3(sin(heading), 0, cos(heading)) * randf_range(0.6, 2.3)
+		var offset := _wander_target - global_position
+		offset.y = 0
+		_move(delta, offset if offset.length_squared() > 0.12 else Vector3.ZERO, rotation.y, 0.68)
+	_animate(delta, false, 0.0, 0.0)
 
 
 func pursue(delta: float, may_strike: bool) -> bool:
@@ -96,9 +110,9 @@ func _animate(delta: float, chasing: bool, windup: float, recovery: float) -> vo
 	model.animate(delta, Vector2(motion.x, motion.z).length(), chasing, windup, recovery)
 
 
-func _move(delta: float, offset: Vector3, rest_facing: float) -> void:
+func _move(delta: float, offset: Vector3, rest_facing: float, top_speed := SPEED) -> void:
 	var course := Vector3.ZERO if offset.is_zero_approx() else _clear_course(offset)
-	var speed := minf(SPEED, offset.length() / delta)
+	var speed := minf(top_speed, offset.length() / delta)
 	velocity.x = course.x * speed
 	velocity.z = course.z * speed
 	var desired_yaw := rest_facing if course.is_zero_approx() else atan2(course.x, course.z)
@@ -123,8 +137,8 @@ func _clear_course(offset: Vector3) -> Vector3:
 	return Vector3.ZERO
 
 
-func take_sword_hit() -> bool:
-	health -= 2
+func take_hit(damage: int) -> bool:
+	health -= damage
 	model.stagger()
 	if health > 0:
 		return false

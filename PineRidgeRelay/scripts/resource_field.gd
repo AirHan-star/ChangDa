@@ -3,95 +3,87 @@ extends RefCounted
 
 const WOOD_SCENE := preload("res://scenes/wood_pickup.tscn")
 const ORE_SCENE := preload("res://scenes/ore.tscn")
-const MAX_DAILY_WOOD := 22
-const MAX_DAILY_ORE := 8
-const WOOD_DELAY := 15.0
-const ORE_DELAY := 21.0
-const ORE_CLEARANCE := Vector3(1.65, 0.94, 1.27)
+const TIN := preload("res://assets/world/ration_tin.glb")
+const WOOD_DELAY := 48.0
+const ORE_DELAY := 72.0
 
 class Slot:
+	var key: String
+	var place: Vector3
+	var kind: int
 	var occupant: Node3D
-	var location: Vector3
-	var cooldown := 0.0
 
-	func _init(resource: Node3D) -> void:
-		occupant = resource
-		location = resource.position
-
-var _wood: Array[Slot] = []
-var _ore: Array[Slot] = []
-var _wood_total := 0
-var _ore_total := 0
-var _supplies: Node3D
-var _ores: Node3D
-var _rules: SupplyRules
-var _ore_clearance := BoxShape3D.new()
+var _slots: Array[Slot] = []
+var _region: SurvivalRegion
+var _depleted: Dictionary
+var _clearance := SphereShape3D.new()
 
 
-func _init(supplies: Node3D, ores: Node3D, rules: SupplyRules) -> void:
-	_supplies = supplies
-	_ores = ores
-	_rules = rules
-	_ore_clearance.size = ORE_CLEARANCE
-	for child in supplies.get_children():
-		var pickup := child as SupplyPickup
-		assert(pickup != null)
-		var registered := _rules.register_pickup(pickup.supply_id, pickup.kind)
-		assert(registered)
-		if pickup.kind == SupplyRules.Kind.WOOD:
-			_wood.append(Slot.new(pickup))
-	for child in ores.get_children():
-		_ore.append(Slot.new(child))
-	_wood_total = _wood.size()
-	_ore_total = _ore.size()
+func _init(region: SurvivalRegion, depleted: Dictionary) -> void:
+	_region = region
+	_depleted = depleted
+	_clearance.radius = 0.82
+	var rows := region.deposits()
+	for i in range(rows.size()):
+		var row: Array = rows[i]
+		var slot := Slot.new()
+		slot.key = "%d:%d" % [region.id, i]
+		slot.place = region.surface(Vector2(row[0], row[1]))
+		slot.kind = row[2]
+		_slots.append(slot)
+		if not depleted.has(slot.key):
+			_place(slot)
 
 
-func tick(delta: float) -> void:
-	# The authored slots also bound the number present simultaneously.
-	for slot in _wood:
-		if _wood_total >= MAX_DAILY_WOOD:
-			break
-		if _ready_to_refill(slot, delta):
-			_wood_total += 1
-			var pickup := WOOD_SCENE.instantiate() as SupplyPickup
-			pickup.supply_id = StringName("refresh_%d" % _wood_total)
-			var registered := _rules.register_pickup(pickup.supply_id, pickup.kind)
-			assert(registered)
-			_place(pickup, slot, _supplies)
-	for slot in _ore:
-		if _ore_total >= MAX_DAILY_ORE:
-			break
-		if _ready_to_refill(slot, delta) and _ore_spawn_clear(slot.location):
-			_ore_total += 1
-			_place(ORE_SCENE.instantiate() as Node3D, slot, _ores)
+func tick(time: float, daylight: bool) -> void:
+	if not daylight:
+		return
+	for slot in _slots:
+		if is_instance_valid(slot.occupant) or float(_depleted.get(slot.key, 0.0)) > time:
+			continue
+		if slot.kind >= SupplyRules.Kind.STONE and not _clear_to_spawn(slot.place):
+			continue
+		_depleted.erase(slot.key)
+		_place(slot)
 
 
-func remove(resource: Node3D) -> void:
-	var slots := _ore if resource is MineableOre else _wood
-	for slot in slots:
-		if slot.occupant == resource:
-			slot.occupant = null
-			slot.cooldown = ORE_DELAY if resource is MineableOre else WOOD_DELAY
-			break
-	resource.queue_free()
+func remove(resource: Node3D, time: float) -> void:
+	for slot in _slots:
+		if slot.occupant != resource:
+			continue
+		slot.occupant = null
+		var delay := WOOD_DELAY if slot.kind == SupplyRules.Kind.WOOD else ORE_DELAY
+		_depleted[slot.key] = time + delay if slot.kind != SupplyRules.Kind.CAN else INF
+		resource.queue_free()
+		return
 
 
-func _ready_to_refill(slot: Slot, delta: float) -> bool:
-	if is_instance_valid(slot.occupant):
-		return false
-	slot.cooldown = maxf(0.0, slot.cooldown - delta)
-	return slot.cooldown <= 0.0
-
-
-func _ore_spawn_clear(location: Vector3) -> bool:
+func _clear_to_spawn(location: Vector3) -> bool:
 	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = _ore_clearance
-	query.transform.origin = _ores.to_global(location + Vector3.UP * ORE_CLEARANCE.y * 0.46)
-	query.collision_mask = 6 # Player and infected.
-	return _ores.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+	query.shape = _clearance
+	query.transform.origin = location + Vector3.UP * 0.5
+	query.collision_mask = 6
+	return _region.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
-func _place(resource: Node3D, slot: Slot, parent: Node3D) -> void:
-	resource.position = slot.location
-	parent.add_child(resource)
-	slot.occupant = resource
+func _place(slot: Slot) -> void:
+	if slot.kind >= SupplyRules.Kind.STONE:
+		var ore := ORE_SCENE.instantiate() as MineableOre
+		ore.name = "Deposit_" + slot.key.replace(":", "_")
+		ore.kind = slot.kind
+		ore.position = slot.place
+		_region.ores.add_child(ore)
+		slot.occupant = ore
+		return
+	var supply: Node3D
+	if slot.kind == SupplyRules.Kind.WOOD:
+		supply = WOOD_SCENE.instantiate()
+	else:
+		supply = SupplyPickup.new()
+		supply.kind = SupplyRules.Kind.CAN
+		supply.add_child(TIN.instantiate())
+		RelayGeometry.label(supply, "罐头", Vector3.UP * 1.2, Color("#8aefca"))
+	supply.name = "Supply_" + slot.key.replace(":", "_")
+	supply.position = slot.place
+	_region.supplies.add_child(supply)
+	slot.occupant = supply
