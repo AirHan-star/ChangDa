@@ -8,9 +8,10 @@ enum Upgrade {
 }
 
 const WAVE_LIMIT := 30
-const ACTIVE_CAP := 13
+const WAVE_INTERVAL := 15.0
 const SHOT_RANGE := 68.0
 const SPAWN_LINE := 54.0
+const SPAWN_ROWS := [0.0, 2.1, 4.2, 6.3, 8.4, -2.1, -4.2, -6.3]
 const HEALTH_MULTIPLIER := 2
 const SURGE_SECONDS := 2.5
 const TACTICS := [
@@ -32,26 +33,38 @@ const PERKS := [
 	["热换弹", "换弹后 2.5 秒内射击间隔缩短 28%"],
 ]
 
+class WaveBatch:
+	var number: int
+	var regulars: int
+	var boss_pending: bool
+	var spawned := 0
+	var delay := 0.0
+
+	func _init(index: int) -> void:
+		number = index
+		regulars = 3 + ceili(index * 0.34)
+		boss_pending = index % 10 == 0
+
+	func remaining() -> int:
+		return regulars + int(boss_pending)
+
+
 var gun := RelayMagazine.new(true)
 var vitals := SurvivalRules.new()
 var wave := 0
 var level := 1
 var experience := 0
 var kills := 0
-var boss: RelayInfected
-var boss_max_health := 0
+var bosses: Array[RelayInfected] = []
 var choices: Array[int] = []
 var outcome := Outcome.ACTIVE
-var intermission := 3.0
+var next_wave_in := 3.0
 var surge_left := 0.0
 var _tactics: Array[int] = []
 var _round_sequence := 0
 var _recycled_kills := 0
 var _medic_kills := 0
-var _spawn_in := 0.0
-var _pending := 0
-var _spawned_this_wave := 0
-var _boss_pending := false
+var _batches: Array[WaveBatch] = []
 var _xp_bonus := 0
 var _armor := 0
 var _rng := RandomNumberGenerator.new()
@@ -79,15 +92,18 @@ func experience_needed() -> int:
 
 
 func remaining() -> int:
-	return _pending + _raid.active.size() + int(_boss_pending)
+	var total := _raid.active.size()
+	for batch in _batches:
+		total += batch.remaining()
+	return total
 
 
-func standard_health() -> int:
-	return (3 + wave) * HEALTH_MULTIPLIER
+func standard_health(wave_number: int) -> int:
+	return (3 + wave_number) * HEALTH_MULTIPLIER
 
 
-func brute_health() -> int:
-	return (70 + wave * 4) * HEALTH_MULTIPLIER
+func brute_health(wave_number: int) -> int:
+	return (70 + wave_number * 4) * HEALTH_MULTIPLIER
 
 
 func tick_weapon(delta: float, inventory: SupplyRules) -> void:
@@ -115,15 +131,15 @@ func tick(delta: float) -> void:
 	if outcome != Outcome.ACTIVE or not choices.is_empty():
 		return
 	vitals.advance_hit_grace(delta)
-	if intermission > 0:
-		intermission = maxf(0, intermission - delta)
-		if intermission == 0:
-			_begin_wave()
-	if wave == 0:
-		return
-	_spawn_in = maxf(0, _spawn_in - delta)
-	if _spawn_in == 0 and _raid.active.size() < ACTIVE_CAP and (_boss_pending or _pending > 0):
-		_spawn_in = 0.43 if _spawn() else 0.18
+	if wave < WAVE_LIMIT:
+		next_wave_in -= delta
+		while next_wave_in <= 0.0 and wave < WAVE_LIMIT:
+			wave += 1
+			_batches.append(WaveBatch.new(wave))
+			next_wave_in += WAVE_INTERVAL
+		if wave == WAVE_LIMIT:
+			next_wave_in = 0.0
+	_tick_spawns(delta)
 	for enemy in _raid.active:
 		enemy.last_seen_player = _player.global_position
 		if enemy.pursue(delta, _raid.has_clear_strike(enemy)):
@@ -133,17 +149,24 @@ func tick(delta: float) -> void:
 				return
 
 
-func _begin_wave() -> void:
-	wave += 1
-	_pending = 3 + ceili(wave * 0.34)
-	_boss_pending = wave % 10 == 0
-	_spawned_this_wave = 0
-	_spawn_in = 0
+func _tick_spawns(delta: float) -> void:
+	# Each scheduled wave owns its pending spawns, even when the road is crowded.
+	var placed := false
+	for i in range(_batches.size() - 1,-1,-1):
+		var batch := _batches[i]
+		batch.delay = maxf(0.0,batch.delay-delta)
+		if batch.delay > 0.0 or placed:
+			continue
+		placed = _spawn(batch)
+		batch.delay = 0.43 if placed else 0.18
+		if batch.remaining() == 0:
+			_batches.remove_at(i)
 
 
-func _spawn() -> bool:
-	var brute := _boss_pending
-	var anchor := (_spawned_this_wave * 2 + wave) % LANES.size()
+func _spawn(batch: WaveBatch) -> bool:
+	var brute := batch.boss_pending
+	var wave_number := batch.number
+	var anchor := (batch.spawned * 2 + wave_number) % LANES.size()
 	var candidate := NightRaid.INFECTED_SCENE.instantiate() as RelayInfected
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.65 if brute else 0.31
@@ -152,29 +175,29 @@ func _spawn() -> bool:
 	query.shape = capsule
 	query.collision_mask = 15
 	var space := _region.get_world_3d().direct_space_state
-	for row in range(3):
+	for row in SPAWN_ROWS:
 		for lane in range(LANES.size()):
 			var x: float = LANES[(anchor + lane) % LANES.size()]
-			var point := Vector3(x,0.07,SPAWN_LINE + row * 2.1)
+			var point := Vector3(x,0.07,SPAWN_LINE + row)
 			query.transform.origin = point + Vector3.UP * capsule.height * 0.5
 			if not space.intersect_shape(query,1).is_empty():
 				continue
 			candidate.position = point
 			candidate.nest = -1
-			candidate.health = brute_health() if brute else standard_health()
-			candidate.road_hit = 25 + int(wave / 5.0) if brute else 11 + int(wave / 5.0)
-			candidate.travel_speed = 2.75 + wave * 0.04 if brute else 3.2 + wave * 0.045
-			candidate.elite_scale = 2.08 + wave * 0.005 if brute else 1.0
+			candidate.road_wave = wave_number
+			candidate.health = brute_health(wave_number) if brute else standard_health(wave_number)
+			candidate.road_hit = 25 + int(wave_number / 5.0) if brute else 11 + int(wave_number / 5.0)
+			candidate.travel_speed = 2.75 + wave_number * 0.04 if brute else 3.2 + wave_number * 0.045
+			candidate.elite_scale = 2.08 + wave_number * 0.005 if brute else 1.0
 			candidate.chasing = true
 			_region.infected.add_child(candidate)
 			_raid.active.append(candidate)
-			_spawned_this_wave += 1
+			batch.spawned += 1
 			if brute:
-				boss = candidate
-				boss_max_health = candidate.health
-				_boss_pending = false
+				bosses.append(candidate)
+				batch.boss_pending = false
 			else:
-				_pending -= 1
+				batch.regulars -= 1
 			return true
 	candidate.free()
 	return false
@@ -184,17 +207,15 @@ func _on_felled(enemy: RelayInfected) -> void:
 	if outcome != Outcome.ACTIVE:
 		return
 	kills += 1
-	if enemy == boss:
-		boss = null
-	var base := 55 + wave * 3 if enemy.elite_scale > 1.0 else 9 + int(wave / 3.0)
+	bosses.erase(enemy)
+	var source_wave := enemy.road_wave
+	var base := 55 + source_wave * 3 if enemy.elite_scale > 1.0 else 9 + int(source_wave / 3.0)
 	experience += roundi(base * (1.0 + _xp_bonus * 0.25))
 	_kill_tactics()
-	if remaining() == 0:
-		if wave == WAVE_LIMIT:
-			outcome = Outcome.WON
-			choices.clear()
-			return
-		intermission = 2.7
+	if wave == WAVE_LIMIT and remaining() == 0:
+		outcome = Outcome.WON
+		choices.clear()
+		return
 	_offer_promotion()
 
 

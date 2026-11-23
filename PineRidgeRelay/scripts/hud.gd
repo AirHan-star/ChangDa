@@ -104,10 +104,12 @@ func show_road(run: RoadRun) -> void:
 	phase_label.text = "波次 %02d / %d" % [run.wave,RoadRun.WAVE_LIMIT]
 	phase_label.modulate = ACCENT
 	region_label.text = "等级 %d  ·  经验 %d / %d" % [run.level,run.experience,run.experience_needed()]
-	raid_label.text = "下一波 %.1f 秒" % run.intermission if run.intermission > 0 else "剩余感染者 %d  ·  击杀 %d" % [run.remaining(),run.kills]
-	if is_instance_valid(run.boss):
-		raid_label.text += "\n重装感染者  %d / %d" % [run.boss.health,run.boss_max_health]
-	raid_label.modulate = WARNING if is_instance_valid(run.boss) else Color.WHITE
+	raid_label.text = "剩余感染者 %d  ·  击杀 %d" % [run.remaining(),run.kills]
+	if run.wave < RoadRun.WAVE_LIMIT:
+		raid_label.text += "\n下一波 %.1f 秒" % maxf(0.0,run.next_wave_in)
+	for boss in run.bosses:
+		raid_label.text += "\n第 %d 波头目  %d / %d" % [boss.road_wave,boss.health,run.brute_health(boss.road_wave)]
+	raid_label.modulate = WARNING if not run.bosses.is_empty() else Color.WHITE
 	if run.surge_left > 0:
 		raid_label.text += "\n热换弹 %.1f 秒" % run.surge_left
 	_xp_bar.max_value = run.experience_needed()

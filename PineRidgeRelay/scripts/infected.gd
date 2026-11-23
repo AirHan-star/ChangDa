@@ -18,6 +18,7 @@ var health := 3
 var travel_speed := SPEED
 var elite_scale := 1.0
 var road_hit := 14
+var road_wave := 0
 var _player_attack_in := PLAYER_WINDUP
 var _fall_time := 0.0
 var _fall_side := 1.0
