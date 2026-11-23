@@ -452,11 +452,14 @@ func _fire() -> void:
 	var hit := space.intersect_ray(ray)
 	if not hit.is_empty():
 		aim = hit.position + axis * 0.09
-	var heading := Vector3(axis.x, 0, axis.z).normalized()
-	var muzzle := player.begin_fire(heading)
+	var muzzle := player.begin_fire(axis)
 	var chest := player.global_position + Vector3.UP * 1.24
 	var blocked := space.intersect_ray(PhysicsRayQueryParameters3D.create(chest, muzzle, 9))
-	var impact := raid.shoot(muzzle, (aim - muzzle).normalized()) if blocked.is_empty() else (blocked.position as Vector3)
+	var impact := muzzle
+	if not blocked.is_empty():
+		impact = blocked.position
+	elif (aim - muzzle).dot(axis) > 0.05:
+		impact = raid.shoot(muzzle, (aim - muzzle).normalized())
 	audio.play_at(RelayAudio.Cue.REPORT, muzzle)
 	_shot_effect(muzzle, impact)
 
@@ -561,6 +564,7 @@ func _health_changed() -> void:
 	hud.gear.set_ration_available(points > 0 and points < 100 and rules.carried(SupplyRules.Kind.CAN) > 0)
 	if points == 0:
 		_set_panel(GearPanels.PanelKind.NONE)
+		player.reset_aim_camera()
 		player.set_physics_process(false)
 		player.set_process_unhandled_input(false)
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

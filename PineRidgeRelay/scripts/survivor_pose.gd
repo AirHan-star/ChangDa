@@ -94,7 +94,7 @@ func grip_transform() -> Transform3D:
 
 
 func update_pose(delta: float, speed: float, grounded: bool, tool := -1,
-		progress := 0.0, swinging := false, rising_speed := 0.0, recoil_shot := 0.0) -> void:
+		progress := 0.0, swinging := false, rising_speed := 0.0, recoil_shot := 0.0, aim_pitch := 0.0) -> void:
 	_elapsed += delta
 	_reach_left = maxf(0.0, _reach_left - delta)
 	var pickup_progress := 1.0 - _reach_left / PICKUP_TIME
@@ -166,7 +166,7 @@ func update_pose(delta: float, speed: float, grounded: bool, tool := -1,
 	_pose_arm(_arms[0], torso, -1.0, step_l.x, running, reach, swing_tool, progress)
 	_pose_arm(_arms[1], torso, 1.0, step_r.x, running, 0.0, swing_tool, progress)
 	if firearm:
-		_aim(torso, recoil_shot)
+		_aim(torso, recoil_shot, aim_pitch)
 	_attach_tool(pick_equipped, sword_equipped or firearm)
 	if landed:
 		foot_planted.emit(to_global(Vector3(0.0, 0.04, 0.0)), true)
@@ -231,11 +231,13 @@ func _pose_arm(arm: Limb, torso: Transform3D, side: float, step: float,
 	_solve_limb(arm, torso, wrist, torso.basis * Vector3(side * 0.33, -0.14, -0.91))
 
 
-func _aim(torso: Transform3D, recoil: float) -> void:
-	_tool_basis = Basis.from_euler(Vector3(-PI * 0.5 - recoil * 0.21, 0.0, 0.0))
+func _aim(torso: Transform3D, recoil: float, pitch: float) -> void:
+	var elevation := pitch + recoil * 0.21
+	_tool_basis = Basis(Vector3.RIGHT, -PI * 0.5 - elevation)
 	var stock := Vector3(0.23, 1.27 + recoil * 0.04, 0.30 - recoil * 0.09)
 	_solve_limb(_arms[1], torso, stock, Vector3(0.78, -0.61, -0.31))
-	_solve_limb(_arms[0], torso, Vector3(0.12, 1.20, 0.50 - recoil * 0.08), Vector3(-0.76, -0.44, -0.35))
+	var support := Vector3(0.12, 1.20 + sin(elevation) * 0.20, 0.30 + cos(elevation) * 0.20 - recoil * 0.08)
+	_solve_limb(_arms[0], torso, support, Vector3(-0.76, -0.44, -0.35))
 
 
 func _attach_tool(pick_equipped: bool, sword_equipped: bool) -> void:
