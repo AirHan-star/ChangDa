@@ -98,6 +98,7 @@ func _interact(target: Node3D) -> void:
 		rules.deposit()
 	elif target is SupplyPickup:
 		if rules.collect(target.supply_id):
+			player.play_pickup(target.global_position)
 			field.remove(target)
 	elif target is MineableOre:
 		var power := rules.mining_power()
